@@ -6,11 +6,10 @@
  * without the bidirectional half, so responses arrive as a single length-prefixed
  * Connect frame that `decodeConnectUnaryBody` unwraps.
  *
- * Results are memoized per access token: a token hash keys the cache so a
- * re-login or account switch invalidates it without a manual reset.
+ * Results are memoized per access token so a re-login or account switch
+ * invalidates the cache without a manual reset.
  */
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
-import { createHash } from "node:crypto";
 
 import { GetUsableModelsRequestSchema, GetUsableModelsResponseSchema } from "../proto/agent_pb.js";
 import {
@@ -147,10 +146,10 @@ export interface CursorModel {
   supportsImages?: boolean;
 }
 
-let cachedModels: { tokenHash: string; models: CursorModel[]; expiresAt: number } | null = null;
+let cachedModels: { accessToken: string; models: CursorModel[]; expiresAt: number } | null = null;
 
 let cachedParameterizedModels: {
-  tokenHash: string;
+  accessToken: string;
   models: CursorParameterizedModel[];
   expiresAt: number;
 } | null = null;
@@ -158,16 +157,11 @@ let cachedParameterizedModels: {
 /** Model list cache TTL: 5 minutes. Re-fetches on token change or TTL expiry. */
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
 
-function tokenCacheHash(apiKey: string): string {
-  return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
-}
-
 export async function getCursorModels(
   apiKey: string,
   options?: { signal?: AbortSignal },
 ): Promise<CursorModel[]> {
-  const tokenHash = tokenCacheHash(apiKey);
-  if (cachedModels?.tokenHash === tokenHash && Date.now() < cachedModels.expiresAt)
+  if (cachedModels?.accessToken === apiKey && Date.now() < cachedModels.expiresAt)
     return cachedModels.models;
   try {
     const requestPayload = create(GetUsableModelsRequestSchema, {});
@@ -197,7 +191,7 @@ export async function getCursorModels(
       if (decoded?.models?.length) {
         const models = normalizeCursorModels(decoded.models);
         if (models.length > 0) {
-          cachedModels = { tokenHash, models, expiresAt: Date.now() + MODEL_CACHE_TTL_MS };
+          cachedModels = { accessToken: apiKey, models, expiresAt: Date.now() + MODEL_CACHE_TTL_MS };
           return models;
         }
       }
@@ -236,9 +230,8 @@ export async function getCursorParameterizedModels(
   apiKey: string,
   options?: { signal?: AbortSignal },
 ): Promise<CursorParameterizedModel[]> {
-  const tokenHash = tokenCacheHash(apiKey);
   if (
-    cachedParameterizedModels?.tokenHash === tokenHash &&
+    cachedParameterizedModels?.accessToken === apiKey &&
     Date.now() < cachedParameterizedModels.expiresAt
   )
     return cachedParameterizedModels.models;
@@ -252,7 +245,7 @@ export async function getCursorParameterizedModels(
     if (response.timedOut || response.exitCode !== 0 || response.body.length === 0) return [];
     const body = decodeConnectUnaryBody(response.body) ?? response.body;
     const models = decodeAvailableModelsResponse(body);
-    cachedParameterizedModels = { tokenHash, models, expiresAt: Date.now() + MODEL_CACHE_TTL_MS };
+    cachedParameterizedModels = { accessToken: apiKey, models, expiresAt: Date.now() + MODEL_CACHE_TTL_MS };
     return models;
   } catch (err) {
     console.error(
@@ -284,7 +277,7 @@ export async function discoverCursorCatalog(
     getCursorParameterizedModels(apiKey, options),
   ]);
   if (rawModels.length > 0 || parameterizedModels.length > 0) {
-    writeCachedCatalog({ tokenHash: tokenCacheHash(apiKey), rawModels, parameterizedModels });
+    writeCachedCatalog({ tokenHash: "", rawModels, parameterizedModels });
   }
   return { rawModels, parameterizedModels };
 }
