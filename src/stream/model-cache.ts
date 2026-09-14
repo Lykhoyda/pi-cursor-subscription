@@ -26,7 +26,7 @@ export const CATALOG_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface CachedCatalog {
   version: number;
-  /** Hash of the token the catalog was discovered with, for staleness reporting. */
+  /** Caller-supplied catalog identity. Must not be a raw credential. */
   tokenHash: string;
   savedAt: number;
   rawModels: CursorModel[];
