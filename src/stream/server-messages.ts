@@ -5,13 +5,14 @@
  * on the same stream or the server parks waiting:
  *   - `kvServerMessage`   blob get/set against the local blob store
  *   - `execServerMessage`  tool execution — MCP calls are handed to the caller;
- *     Cursor-native tools (read/write/ls/grep/shell/fetch) run on this stream
+ *     Cursor-native tools (read/ls/grep; write/shell/fetch when opted in) run on this stream
  *   - `interactionQuery`  permission prompts, answered by ./interaction-query.ts
  *
  * Every handler returns whether it made forward progress, which is what feeds
  * the idle watchdog — see `processServerMessage` for the exact contract.
  */
 import { create, toBinary } from "@bufbuild/protobuf";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -20,9 +21,13 @@ import {
   ComputerUseErrorSchema,
   ComputerUseResultSchema,
   ConversationStateStructureSchema,
+  DeletePermissionDeniedSchema,
+  DeleteResultSchema,
   ExecClientControlMessageSchema,
   ExecClientMessageSchema,
   ExecClientThrowSchema,
+  FetchErrorSchema,
+  FetchResultSchema,
   GetBlobResultSchema,
   KvClientMessageSchema,
   McpResultSchema,
@@ -37,6 +42,10 @@ import {
   RequestContextSuccessSchema,
   SetBlobResultSchema,
   ShellRejectedSchema,
+  ShellResultSchema,
+  ShellStreamSchema,
+  WritePermissionDeniedSchema,
+  WriteResultSchema,
   WriteShellStdinErrorSchema,
   WriteShellStdinResultSchema,
   type AgentServerMessage,
@@ -63,6 +72,7 @@ import {
 import { conversationStates, markBlobMiss, trimBlobStore } from "./session-state.js";
 import type { PendingExec, StreamState } from "./types.js";
 import { setLastStreamEvent } from "../diagnostics/diagnostics.js";
+import { asString, cursorEnvBoolean } from "../utils/util.js";
 
 /**
  * Classifies a server message for the stream idle watchdog.
@@ -388,6 +398,23 @@ function nativeToolRejectReason(execCase: string, mcpTools: McpToolDefinition[])
   return "This native Cursor tool is not available in Pi. Use the MCP tools provided instead.";
 }
 
+const PRIVILEGED_NATIVE_EXEC_REJECT =
+  "Privileged Cursor-native exec (shell, fetch, write, delete) is disabled in this provider. " +
+  "Use Pi MCP tools instead, or set PI_CURSOR_NATIVE_EXEC=1 to restore upstream behaviour.";
+
+function isNativeExecAllowed(execCase: string): boolean {
+  switch (execCase) {
+    case "shellArgs":
+    case "shellStreamArgs":
+    case "fetchArgs":
+    case "writeArgs":
+    case "deleteArgs":
+      return cursorEnvBoolean("NATIVE_EXEC", false);
+    default:
+      return true;
+  }
+}
+
 function handleExecMessageInner(
   execMsg: ExecServerMessage,
   mcpTools: McpToolDefinition[],
@@ -459,6 +486,11 @@ function handleExecMessageInner(
   }
 
   const nativeArgs = ((execMsg as any).message?.value ?? {}) as Record<string, unknown>;
+  if (!isNativeExecAllowed(execCase ?? "")) {
+    lifecycleLog("exec_privileged_rejected", { execCase: execCase ?? "unknown" });
+    sendPrivilegedNativeExecRejection(execMsg, execCase ?? "", nativeArgs, mcpTools, sendFrame);
+    return true;
+  }
   const native = dispatchNativeExec(execCase ?? "", nativeArgs);
   if (native?.kind === "sync") {
     sendNativeFrame(execMsg, native.frame, sendFrame);
@@ -652,9 +684,98 @@ function sendNativeFrame(
   sendExecResult(execMsg, frame.resultCase, frame.value, sendFrame);
 }
 
+function sendPrivilegedNativeExecRejection(
+  execMsg: ExecServerMessage,
+  execCase: string,
+  args: Record<string, unknown>,
+  mcpTools: McpToolDefinition[],
+  sendFrame: (data: Uint8Array) => void,
+): void {
+  const reason = `${PRIVILEGED_NATIVE_EXEC_REJECT} ${nativeToolRejectReason(execCase, mcpTools)}`;
+
+  if (execCase === "shellArgs" || execCase === "shellStreamArgs") {
+    const rejected = create(ShellRejectedSchema, {
+      command: asString(args.command) ?? "",
+      workingDirectory: asString(args.workingDirectory) ?? "",
+      reason,
+      isReadonly: false,
+    });
+    if (execCase === "shellArgs") {
+      sendExecResult(
+        execMsg,
+        "shellResult",
+        create(ShellResultSchema, { result: { case: "rejected", value: rejected } }),
+        sendFrame,
+      );
+    } else {
+      sendExecResult(
+        execMsg,
+        "shellStream",
+        create(ShellStreamSchema, { event: { case: "rejected", value: rejected } }),
+        sendFrame,
+      );
+    }
+    return;
+  }
+  if (execCase === "fetchArgs") {
+    sendExecResult(
+      execMsg,
+      "fetchResult",
+      create(FetchResultSchema, {
+        result: {
+          case: "error",
+          value: create(FetchErrorSchema, { url: asString(args.url) ?? "", error: reason }),
+        },
+      }),
+      sendFrame,
+    );
+    return;
+  }
+  if (execCase === "writeArgs") {
+    const rawPath = asString(args.path) ?? "";
+    sendExecResult(
+      execMsg,
+      "writeResult",
+      create(WriteResultSchema, {
+        result: {
+          case: "permissionDenied",
+          value: create(WritePermissionDeniedSchema, {
+            path: rawPath,
+            directory: path.dirname(rawPath || "."),
+            operation: "write",
+            error: reason,
+          }),
+        },
+      }),
+      sendFrame,
+    );
+    return;
+  }
+  if (execCase === "deleteArgs") {
+    sendExecResult(
+      execMsg,
+      "deleteResult",
+      create(DeleteResultSchema, {
+        result: {
+          case: "permissionDenied",
+          value: create(DeletePermissionDeniedSchema, {
+            path: asString(args.path) ?? "",
+            clientVisibleError: reason,
+            isReadonly: false,
+          }),
+        },
+      }),
+      sendFrame,
+    );
+    return;
+  }
+  sendExecThrow(execMsg, reason, sendFrame);
+}
+
 export const __testInternals = {
   nativeToolRejectReason,
   handleExecMessageInner,
   describeUnknownFields,
   dispatchNativeExec,
+  isNativeExecAllowed,
 };

@@ -6,9 +6,7 @@ Security fixes are applied to the latest published `1.x` release. Please upgrade
 
 ## Reporting a vulnerability
 
-Please **do not** open a public issue for a suspected vulnerability.
-
-Use [GitHub private vulnerability reporting](https://github.com/Rahularya01/pi-cursor/security/advisories/new) to send a report directly to the maintainers. Include:
+Please prefer [GitHub private vulnerability reporting](https://github.com/Lykhoyda/pi-cursor-subscription/security/advisories/new) when it is enabled. Otherwise open a [GitHub issue](https://github.com/Lykhoyda/pi-cursor-subscription/issues). Include:
 
 - a clear description and impact assessment;
 - reproducible steps or a minimal proof of concept;
@@ -24,6 +22,16 @@ This repository contains a Pi extension that handles OAuth credentials and sends
 ## Access tokens & secrets
 
 Treat access and refresh tokens in `~/.pi/agent/auth.json`, Keychain, or `state.vscdb` as sensitive. Do not share or commit session tokens.
+
+### Privileged native exec
+
+By default this fork **does not** run Cursor-native `shell`, `fetch`, `write`, or `delete` on the open Run RPC. Those execs are rejected so Pi MCP tools (and Pi's confirmation UI) handle them. Read/ls/grep still run natively.
+
+To restore upstream 1.4.31+ behaviour:
+
+```bash
+export PI_CURSOR_NATIVE_EXEC=1
+```
 
 ### System credential reuse
 

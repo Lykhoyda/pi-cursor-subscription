@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0] - 2026-09-14
+
+First release of this fork (`@lykhoyda/pi-cursor-subscription`), based on `@rahularya01/pi-cursor` 1.4.34.
+
+### Security
+
+- **Privileged Cursor-native exec is off by default.** `shellArgs`, `shellStreamArgs`, `fetchArgs`, `writeArgs`, and `deleteArgs` are rejected on the Run RPC so those actions go through Pi MCP tools (and Pi's confirmation UI). Read/ls/grep still run natively. Set `PI_CURSOR_NATIVE_EXEC=1` to restore upstream 1.4.31+ behaviour.
+
 ## [1.4.34] - 2026-09-14
 
 ### Fixed
