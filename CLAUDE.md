@@ -6,7 +6,7 @@ file only adds notes specific to working here with Claude Code.
 
 ## Before finishing any task
 
-Run `bun run check` (typecheck, lint, format:check, security-check, proto:check, bun test,
+Run `bun run check` (typecheck, lint, security-check, proto:check, bun test,
 test:legacy). Fix any failure your change caused before reporting done.
 
 ## Things to keep in mind

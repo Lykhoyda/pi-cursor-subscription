@@ -1,8 +1,0 @@
-node_modules
-dist
-.claude
-.pi-subagents
-bun.lock
-scripts/**
-src/proto/**
-bunfig.toml

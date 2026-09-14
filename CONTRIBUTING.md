@@ -19,7 +19,7 @@ bun install
 bun run check
 ```
 
-`bun run check` runs TypeScript, ESLint, Prettier, the repository security checks, the
+`bun run check` runs TypeScript, oxlint, the repository security checks, the
 protobuf staleness check, and the unit tests. Run it before opening a pull request.
 
 ## Generated code
