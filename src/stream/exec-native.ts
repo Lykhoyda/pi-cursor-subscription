@@ -3,9 +3,9 @@
  * delete, shell, fetch). These run on the open Run RPC so the model can keep
  * generating instead of being told to retry through MCP.
  *
- * Paths are confined to `process.cwd()`. Mutating and shell work still happens
- * here because that is the exec-channel contract — Pi's MCP tools remain
- * available for anything the model calls that way.
+ * Privileged cases (write, delete, shell, fetch) are gated by
+ * `PI_CURSOR_NATIVE_EXEC` in `native-exec-policy.ts` — off by default in this
+ * fork. Paths for the remaining handlers are confined to `process.cwd()`.
  */
 import { spawn } from "node:child_process";
 import {

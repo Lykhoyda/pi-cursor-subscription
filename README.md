@@ -1,14 +1,11 @@
-# @rahularya01/pi-cursor
+# @lykhoyda/pi-cursor-subscription
 
-[![npm version](https://img.shields.io/npm/v/@rahularya01/pi-cursor?logo=npm)](https://www.npmjs.com/package/@rahularya01/pi-cursor)
-[![license](https://img.shields.io/npm/l/@rahularya01/pi-cursor)](LICENSE)
-[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?logo=github)](https://github.com/sponsors/Rahularya01)
+[![license](https://img.shields.io/npm/l/@lykhoyda/pi-cursor-subscription)](LICENSE)
 
 Use your **Cursor** subscription's models — Composer, Claude, GPT, Grok — inside the **Pi Coding Agent**.
-`pi-cursor` plugs in a `cursor` model provider that talks to Cursor's own backend directly (native
-Connect/protobuf streaming over HTTP/2), so there's no separate API key to buy and no Cursor CLI
-process running in the background for every chat turn. If you're already logged into Cursor's app
-or CLI, it just works — no setup beyond installing the package.
+This is a fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) 1.4.34. It talks to Cursor's own backend (native Connect/protobuf streaming over HTTP/2), so there's no separate API key to buy and no Cursor CLI process for every chat turn.
+
+**Difference from upstream:** privileged Cursor-native exec (`shell`, `fetch`, `write`, `delete`) is **off by default**. Those requests are rejected on the stream so the model uses Pi MCP tools (with Pi's confirmation UI) instead. Read/ls/grep still run on the Connect channel. Restore upstream behaviour with `PI_CURSOR_NATIVE_EXEC=1`.
 
 > **Unofficial integration.** This project is not affiliated with or endorsed by Cursor / Anysphere. It uses reverse-engineered wire protocol details shared by community clients (see [Attributions](#attributions)). Use it only with an account you are authorized to access, and review its source before granting OAuth permissions. Cursor may change wire protocol endpoints or formats at any time.
 
@@ -37,7 +34,7 @@ or CLI, it just works — no setup beyond installing the package.
 ## Install
 
 ```bash
-pi install npm:@rahularya01/pi-cursor
+pi install git:github.com/Lykhoyda/pi-cursor-subscription
 ```
 
 Then **restart Pi** (or run `/reload`) so the new provider is picked up.
@@ -48,13 +45,13 @@ Then **restart Pi** (or run `/reload`) so the new provider is picked up.
 Install the latest code straight from GitHub instead of npm:
 
 ```bash
-pi install git:github.com/Rahularya01/pi-cursor
+pi install git:github.com/Lykhoyda/pi-cursor-subscription
 ```
 
 To update later:
 
 ```bash
-pi update npm:@rahularya01/pi-cursor
+pi update git:github.com/Lykhoyda/pi-cursor-subscription
 ```
 
 </details>
@@ -194,6 +191,7 @@ for tuning timeouts, debugging, and edge-case overrides.
 
 | Variable                                       | Purpose                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PI_CURSOR_NATIVE_EXEC`                        | `1`/`true` to allow Cursor-native shell, fetch, write, and delete on the open Run RPC (upstream 1.4.31 behaviour). **Default off.** Read/ls/grep are unaffected.                                                                                                                                                                                                                                                     |
 | `PI_CURSOR_AGENT_URL` / `CURSOR_AGENT_URL`     | Override agent base URL (default: `https://agentn.us.api5.cursor.sh`).                                                                                                                                                                                                                                                                                                                                               |
 | `CURSOR_ACCESS_TOKEN`                          | Static access token override.                                                                                                                                                                                                                                                                                                                                                                                        |
 | `PI_CURSOR_CLIENT_VERSION`                     | Pin `x-cursor-client-version` header sent by the HTTP/2 bridge.                                                                                                                                                                                                                                                                                                                                                      |
@@ -273,7 +271,7 @@ layer. Never hand-edit it — regenerate with `bun run proto:gen` (see
 
 ## Troubleshooting
 
-- **`No API provider registered for api: cursor-native`:** Update to the latest `pi-cursor` (`pi update npm:@rahularya01/pi-cursor`) and restart Pi (or `/reload`). This means the Agent tried to stream via Pi's global `streamSimple` dispatcher before the Cursor transport was registered there. Current builds register `cursor-native` on that registry during extension load.
+- **`No API provider registered for api: cursor-native`:** Update this package (`pi update git:github.com/Lykhoyda/pi-cursor-subscription`) and restart Pi (or `/reload`). This means the Agent tried to stream via Pi's global `streamSimple` dispatcher before the Cursor transport was registered there. Current builds register `cursor-native` on that registry during extension load.
 - **Not logged in / 401:** Ensure Cursor CLI or app is logged in, or run `/login cursor` again. Check `/cursor.doctor` to verify your `tokenSource`. Tokens from CLI/IDE are re-resolved when near expiry; idle stream retries also force-refresh credentials.
 - **Empty / hung stream:** Cursor may have updated wire headers; verify network connectivity or bump `PI_CURSOR_CLIENT_VERSION`. `/cursor.doctor` prints the active `clientVersion`.
 - **Wire-protocol drift:** Cursor can change `agent.v1` at any time. Unrecognized server messages and unknown protobuf fields are no longer skipped silently — they are counted, written to the lifecycle log as `wire_drift`, appended to the failing turn's error message, and listed by `/cursor.doctor` under `wireDrift`. `wireDriftStranding=yes` means an unanswered message could have parked the turn, which is the difference between "our schema is a bit behind" and "this is why it hung". Run `CURSOR_ACCESS_TOKEN=... bun run smoke:wire` to check the handshake and schema against the live endpoint without starting a chat turn, then see [`proto/README.md`](proto/README.md) to resync the schema.
@@ -325,11 +323,7 @@ Wire protocol and authentication patterns adapted from MIT community client line
 - [ephraimduncan/opencode-cursor](https://github.com/ephraimduncan/opencode-cursor)
 - [@pi-stef/cursor](https://www.npmjs.com/package/@pi-stef/cursor)
 
-Package structure mirrors [pi-antigravity](https://github.com/Rahularya01/pi-antigravity).
-
-## Support the project
-
-If `pi-cursor` is useful to you, consider [sponsoring the project on GitHub](https://github.com/sponsors/Rahularya01).
+Package structure mirrors [pi-antigravity](https://github.com/Rahularya01/pi-antigravity). This repository is a fork of [Rahularya01/pi-cursor](https://github.com/Rahularya01/pi-cursor).
 
 ## License
 

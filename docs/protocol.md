@@ -1,6 +1,6 @@
 # Cursor Wire Protocol & Architecture (`pi-cursor`)
 
-This document describes the reverse-engineered wire protocol, HTTP/2 streaming architecture, authentication cascade, and payload structure used by `@rahularya01/pi-cursor`.
+This document describes the reverse-engineered wire protocol, HTTP/2 streaming architecture, authentication cascade, and payload structure used by `@lykhoyda/pi-cursor-subscription` (fork of `@rahularya01/pi-cursor`).
 
 ## Overview
 

@@ -5,13 +5,14 @@
  * on the same stream or the server parks waiting:
  *   - `kvServerMessage`   blob get/set against the local blob store
  *   - `execServerMessage`  tool execution — MCP calls are handed to the caller;
- *     Cursor-native tools (read/write/ls/grep/shell/fetch) run on this stream
+ *     Cursor-native tools (read/ls/grep; write/shell/fetch when opted in) run on this stream
  *   - `interactionQuery`  permission prompts, answered by ./interaction-query.ts
  *
  * Every handler returns whether it made forward progress, which is what feeds
  * the idle watchdog — see `processServerMessage` for the exact contract.
  */
 import { create, toBinary } from "@bufbuild/protobuf";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -20,9 +21,13 @@ import {
   ComputerUseErrorSchema,
   ComputerUseResultSchema,
   ConversationStateStructureSchema,
+  DeletePermissionDeniedSchema,
+  DeleteResultSchema,
   ExecClientControlMessageSchema,
   ExecClientMessageSchema,
   ExecClientThrowSchema,
+  FetchErrorSchema,
+  FetchResultSchema,
   GetBlobResultSchema,
   KvClientMessageSchema,
   McpResultSchema,
@@ -37,6 +42,10 @@ import {
   RequestContextSuccessSchema,
   SetBlobResultSchema,
   ShellRejectedSchema,
+  ShellResultSchema,
+  ShellStreamSchema,
+  WritePermissionDeniedSchema,
+  WriteResultSchema,
   WriteShellStdinErrorSchema,
   WriteShellStdinResultSchema,
   type AgentServerMessage,
@@ -51,6 +60,7 @@ import { debugLog, lifecycleLog } from "./debug-log.js";
 import { recordDriftSignal, recordUnknownFields } from "./drift.js";
 import { dispatchNativeExec, type NativeExecFrame } from "./exec-native.js";
 import { handleInteractionQuery } from "./interaction-query.js";
+import { isNativeExecAllowed, privilegedNativeExecRejectReason } from "./native-exec-policy.js";
 import { decodeMcpArgsMap } from "./request-build.js";
 import { stripCursorMcpToolName } from "./root-prompt.js";
 import {
@@ -459,6 +469,11 @@ function handleExecMessageInner(
   }
 
   const nativeArgs = ((execMsg as any).message?.value ?? {}) as Record<string, unknown>;
+  if (!isNativeExecAllowed(execCase ?? "")) {
+    lifecycleLog("exec_privileged_rejected", { execCase: execCase ?? "unknown" });
+    sendPrivilegedNativeExecRejection(execMsg, execCase ?? "", nativeArgs, mcpTools, sendFrame);
+    return true;
+  }
   const native = dispatchNativeExec(execCase ?? "", nativeArgs);
   if (native?.kind === "sync") {
     sendNativeFrame(execMsg, native.frame, sendFrame);
@@ -652,9 +667,112 @@ function sendNativeFrame(
   sendExecResult(execMsg, frame.resultCase, frame.value, sendFrame);
 }
 
+function sendPrivilegedNativeExecRejection(
+  execMsg: ExecServerMessage,
+  execCase: string,
+  args: Record<string, unknown>,
+  mcpTools: McpToolDefinition[],
+  sendFrame: (data: Uint8Array) => void,
+): void {
+  const reason = `${privilegedNativeExecRejectReason()} ${nativeToolRejectReason(execCase, mcpTools)}`;
+  const command = typeof args.command === "string" ? args.command : "";
+  const workingDirectory = typeof args.workingDirectory === "string" ? args.workingDirectory : "";
+  const rawPath = typeof args.path === "string" ? args.path : "";
+  const url = typeof args.url === "string" ? args.url : "";
+
+  if (execCase === "shellArgs") {
+    sendExecResult(
+      execMsg,
+      "shellResult",
+      create(ShellResultSchema, {
+        result: {
+          case: "rejected",
+          value: create(ShellRejectedSchema, {
+            command,
+            workingDirectory,
+            reason,
+            isReadonly: false,
+          }),
+        },
+      }),
+      sendFrame,
+    );
+    return;
+  }
+  if (execCase === "shellStreamArgs") {
+    sendExecResult(
+      execMsg,
+      "shellStream",
+      create(ShellStreamSchema, {
+        event: {
+          case: "rejected",
+          value: create(ShellRejectedSchema, {
+            command,
+            workingDirectory,
+            reason,
+            isReadonly: false,
+          }),
+        },
+      }),
+      sendFrame,
+    );
+    return;
+  }
+  if (execCase === "fetchArgs") {
+    sendExecResult(
+      execMsg,
+      "fetchResult",
+      create(FetchResultSchema, {
+        result: { case: "error", value: create(FetchErrorSchema, { url, error: reason }) },
+      }),
+      sendFrame,
+    );
+    return;
+  }
+  if (execCase === "writeArgs") {
+    sendExecResult(
+      execMsg,
+      "writeResult",
+      create(WriteResultSchema, {
+        result: {
+          case: "permissionDenied",
+          value: create(WritePermissionDeniedSchema, {
+            path: rawPath,
+            directory: path.dirname(rawPath || "."),
+            operation: "write",
+            error: reason,
+          }),
+        },
+      }),
+      sendFrame,
+    );
+    return;
+  }
+  if (execCase === "deleteArgs") {
+    sendExecResult(
+      execMsg,
+      "deleteResult",
+      create(DeleteResultSchema, {
+        result: {
+          case: "permissionDenied",
+          value: create(DeletePermissionDeniedSchema, {
+            path: rawPath,
+            clientVisibleError: reason,
+            isReadonly: false,
+          }),
+        },
+      }),
+      sendFrame,
+    );
+    return;
+  }
+  sendExecThrow(execMsg, reason, sendFrame);
+}
+
 export const __testInternals = {
   nativeToolRejectReason,
   handleExecMessageInner,
   describeUnknownFields,
   dispatchNativeExec,
+  isNativeExecAllowed,
 };

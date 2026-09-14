@@ -1,20 +1,16 @@
 {
-  "name": "@rahularya01/pi-cursor",
-  "version": "1.4.34",
-  "description": "Native Cursor provider for Pi Coding Agent (OAuth + Connect/protobuf streamSimple)",
-  "author": "Rahul Arya",
+  "name": "@lykhoyda/pi-cursor-subscription",
+  "version": "1.5.0",
+  "description": "Cursor provider for Pi Coding Agent. Fork of @rahularya01/pi-cursor with privileged native exec off by default.",
+  "author": "Anton Lykhoyda",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Rahularya01/pi-cursor.git"
+    "url": "git+https://github.com/Lykhoyda/pi-cursor-subscription.git"
   },
-  "homepage": "https://github.com/Rahularya01/pi-cursor#readme",
-  "funding": {
-    "type": "github",
-    "url": "https://github.com/sponsors/Rahularya01"
-  },
+  "homepage": "https://github.com/Lykhoyda/pi-cursor-subscription#readme",
   "bugs": {
-    "url": "https://github.com/Rahularya01/pi-cursor/issues"
+    "url": "https://github.com/Lykhoyda/pi-cursor-subscription/issues"
   },
   "type": "module",
   "main": "./dist/index.js",
