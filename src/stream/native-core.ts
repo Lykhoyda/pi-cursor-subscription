@@ -884,6 +884,7 @@ function writeNativeStream(
     pendingExecs: [],
     outputTokens: 0,
     totalTokens: 0,
+    previousContextTokens: conversationStates.get(convKey)?.lastContextTokens,
     turnEnded: false,
   };
   const tagFilter = createThinkingTagFilter();

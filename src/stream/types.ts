@@ -206,6 +206,13 @@ export interface StoredConversation {
   midPauseRecordedAtMs?: number;
   /** Hash of the system prompt last published to Cursor for this conversation. */
   systemPromptHash?: string;
+  /**
+   * `contextTokens` reported by the previous turn's checkpoint. Cursor's
+   * streaming wire has no per-turn cache-read/write breakdown (only a total
+   * `tokenDetails.usedTokens`), so this is the basis for estimating how much
+   * of a continuation turn's input was already cached vs newly written.
+   */
+  lastContextTokens?: number;
   sessionScoped: boolean;
   sessionId?: string;
   blobStore: Map<string, Uint8Array>;
@@ -219,6 +226,8 @@ export interface StreamState {
   totalTokens: number;
   /** Input/context tokens from the last checkpoint `tokenDetails.usedTokens`. */
   contextTokens?: number;
+  /** `contextTokens` from the previous turn on this conversation, if any (see StoredConversation). */
+  previousContextTokens?: number;
   /** Set once Cursor reported `turnEnded`; a connection close after it is a completed turn. */
   turnEnded: boolean;
 }

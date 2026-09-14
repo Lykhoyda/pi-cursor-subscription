@@ -12,6 +12,7 @@
  * the idle watchdog — see `processServerMessage` for the exact contract.
  */
 import { create, toBinary } from "@bufbuild/protobuf";
+import { pathToFileURL } from "node:url";
 
 import {
   AgentClientMessageSchema,
@@ -30,6 +31,7 @@ import {
   ReadMcpResourceRejectedSchema,
   RecordScreenFailureSchema,
   RecordScreenResultSchema,
+  RequestContextEnvSchema,
   RequestContextResultSchema,
   RequestContextSchema,
   RequestContextSuccessSchema,
@@ -50,6 +52,7 @@ import { recordDriftSignal, recordUnknownFields } from "./drift.js";
 import { dispatchNativeExec, type NativeExecFrame } from "./exec-native.js";
 import { handleInteractionQuery } from "./interaction-query.js";
 import { decodeMcpArgsMap } from "./request-build.js";
+import { stripCursorMcpToolName } from "./root-prompt.js";
 import {
   interactionUpdateProgress,
   MAX_ACTIVE_BLOB_BYTES,
@@ -57,7 +60,7 @@ import {
   MAX_INDIVIDUAL_BLOB_BYTES,
   type StreamProgress,
 } from "./tuning.js";
-import { markBlobMiss, trimBlobStore } from "./session-state.js";
+import { conversationStates, markBlobMiss, trimBlobStore } from "./session-state.js";
 import type { PendingExec, StreamState } from "./types.js";
 import { setLastStreamEvent } from "../diagnostics/diagnostics.js";
 
@@ -221,6 +224,12 @@ export function processServerMessage(
       const used = (stateStructure as any).tokenDetails.usedTokens;
       state.totalTokens = used;
       state.contextTokens = used;
+      // Recorded for the *next* turn on this conversation, so its cache
+      // read/write split can be estimated against this turn's context size.
+      if (convKey) {
+        const stored = conversationStates.get(convKey);
+        if (stored) stored.lastContextTokens = used;
+      }
     }
     if (onCheckpoint) {
       onCheckpoint(toBinary(ConversationStateStructureSchema, stateStructure));
@@ -390,8 +399,16 @@ function handleExecMessageInner(
   const REJECT_REASON = nativeToolRejectReason(execCase ?? "", mcpTools);
 
   if (execCase === "requestContextArgs") {
+    // Must mirror the conversation state's `previousWorkspaceUris` (see
+    // request-build.ts), or Cursor diffs "previous: [cwd]" against "current:
+    // none" and injects a spurious "Workspace folders changed ... to none"
+    // reminder into the model's context on every turn.
+    const env = create(RequestContextEnvSchema, {
+      workspacePaths: [pathToFileURL(process.cwd()).href],
+    });
     const requestContext = create(RequestContextSchema, {
       rules: [],
+      env,
       repositoryInfo: [],
       tools: mcpTools,
       gitRepos: [],
@@ -409,12 +426,16 @@ function handleExecMessageInner(
 
   if (execCase === "mcpArgs") {
     const mcpArgs = (execMsg as any).message.value;
-    const toolName =
+    const rawToolName =
       typeof mcpArgs.toolName === "string" && mcpArgs.toolName
         ? mcpArgs.toolName
         : typeof mcpArgs.name === "string"
           ? mcpArgs.name
           : "";
+    // The model sometimes mimics the `mcp_pi_<tool>` naming it saw in its own
+    // replayed history (root-prompt.ts) when issuing a new call. Pi's tool
+    // registry only knows the unprefixed name, so unwrap it before matching.
+    const toolName = stripCursorMcpToolName(rawToolName);
     const availableTools = availableToolNamesFor(mcpTools);
     if (!toolName || !availableTools.includes(toolName)) {
       const notFound = create(McpResultSchema, {

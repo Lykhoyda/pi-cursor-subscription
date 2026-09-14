@@ -155,6 +155,10 @@ export function interactionUpdateProgress(
     updateCase === "summaryCompleted"
   )
     return "work";
+  // Step boundaries bracket generation the same way tool calls do — known,
+  // parseable cases, not schema drift (see agent.proto StepStartedUpdate /
+  // StepCompletedUpdate).
+  if (updateCase === "stepStarted" || updateCase === "stepCompleted") return "work";
   return "none";
 }
 

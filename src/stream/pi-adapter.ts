@@ -53,22 +53,57 @@ export function applyCursorUsage(
 ): void {
   if (!state) return;
   const usage = computeUsage(state);
-  const costInput = tokenCost(usage.prompt_tokens, model.cost?.input);
+  const { cacheRead, cacheWrite, input } = splitPromptTokensForCache(usage.prompt_tokens, state);
+  const costInput = tokenCost(input, model.cost?.input);
   const costOutput = tokenCost(usage.completion_tokens, model.cost?.output);
+  const costCacheRead = tokenCost(cacheRead, model.cost?.cacheRead);
+  const costCacheWrite = tokenCost(cacheWrite, model.cost?.cacheWrite);
   output.usage = {
-    input: usage.prompt_tokens,
+    input,
     output: usage.completion_tokens,
-    cacheRead: 0,
-    cacheWrite: 0,
+    cacheRead,
+    cacheWrite,
     totalTokens: usage.total_tokens,
     cost: {
       input: costInput,
       output: costOutput,
-      cacheRead: 0,
-      cacheWrite: 0,
-      total: costInput + costOutput,
+      cacheRead: costCacheRead,
+      cacheWrite: costCacheWrite,
+      total: costInput + costOutput + costCacheRead + costCacheWrite,
     },
   };
+}
+
+/**
+ * Cursor's streaming wire reports only a single running `usedTokens` total per
+ * turn — there is no per-turn cache-read/write breakdown on the protocol (see
+ * `TokenDeltaUpdate` / `ConversationTokenDetails` in agent.proto). Reporting
+ * cacheRead/cacheWrite as flat 0 made every Cursor turn look like a full cache
+ * miss to consumers that compare usage against prior context size, even
+ * though Cursor's own dashboard shows these conversations are >90% cache hits.
+ *
+ * Estimate the split instead: on a continuation turn, the portion of this
+ * turn's prompt tokens that overlaps the previous turn's context size was
+ * (almost certainly) served from cache; only the newly added tokens had to be
+ * written. This is an estimate, not a value Cursor reports directly — it can
+ * be off by whatever the model/server trimmed or reordered between turns, but
+ * it is far closer than assuming zero cache on every single turn.
+ */
+function splitPromptTokensForCache(
+  promptTokens: number,
+  state: StreamState,
+): { cacheRead: number; cacheWrite: number; input: number } {
+  const previous = state.previousContextTokens;
+  if (!previous || previous <= 0) {
+    // First turn on this conversation (or no prior checkpoint): there is
+    // nothing to have read from cache yet, and whether Cursor bills the
+    // write at cache-write rates isn't something the wire tells us — leave
+    // it as plain input, matching prior (pre-heuristic) behavior.
+    return { cacheRead: 0, cacheWrite: 0, input: promptTokens };
+  }
+  const cacheRead = Math.min(previous, promptTokens);
+  const cacheWrite = Math.max(0, promptTokens - previous);
+  return { cacheRead, cacheWrite, input: 0 };
 }
 
 export function createCursorAssistantMessage(model: Model<Api>): AssistantMessage {

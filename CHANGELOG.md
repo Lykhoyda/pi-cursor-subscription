@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.34] - 2026-09-14
+
+### Fixed
+
+- **`stepStarted`/`stepCompleted` `InteractionUpdate` cases no longer report as wire-drift.** Both were already decodable (`agent.proto` `StepStartedUpdate`/`StepCompletedUpdate`), but `interactionUpdateProgress` had no branch for them, so every step boundary was flagged as an unrecognized case and stapled a misleading `[wire-drift: unknown wire fields...]` note onto whatever error followed — including unrelated upstream rejections. Fixes the misleading diagnostic in [#29](https://github.com/Rahularya01/pi-cursor/issues/29).
+- **Cache read/write are no longer hardcoded to 0 on every Cursor turn.** Cursor's streaming wire has no per-turn cache breakdown, so every turn looked like a full cache miss to consumers comparing usage against prior context size — even though Cursor was actually caching >90% of tokens. Continuation turns now estimate the split from the previous turn's checkpoint context size: the overlap is reported as `cacheRead`, the new remainder as `cacheWrite`, priced at the model's actual cache rates. Fixes [#30](https://github.com/Rahularya01/pi-cursor/issues/30).
+- **The spurious "Workspace folders changed from `<cwd>` to none" reminder is gone.** The `requestContextArgs` reply never set `env.workspacePaths`, so every turn told Cursor the current workspace was empty while the checkpoint's `previousWorkspaceUris` still said `[cwd]` — a diff Cursor read as the workspace disappearing. The reply now declares the current cwd. Fixes [#31](https://github.com/Rahularya01/pi-cursor/issues/31).
+- **The model no longer gets its own tool calls rejected as `mcp_pi_<tool>` "not found."** Replayed history intentionally renders tool calls in Cursor's `mcp_pi_<tool>` form, which sometimes primed the model to emit that same form for a genuinely new call — one Pi's own tool registry only recognizes unprefixed. Live `mcpArgs` execs are now unwrapped back to the raw name before matching. Also fixes [#31](https://github.com/Rahularya01/pi-cursor/issues/31).
+
 ## [1.4.33] - 2026-09-08
 
 ### Fixed

@@ -69,6 +69,20 @@ export function cursorMcpToolName(toolName: string): string {
   return `mcp_${MCP_PROVIDER_IDENTIFIER}_${name}`;
 }
 
+/**
+ * Inverse of `cursorMcpToolName`. Replayed history renders tool calls in
+ * Cursor's `mcp_pi_<tool>` form (see module docs), which primes the model to
+ * emit that same form for genuinely new calls. Pi's own tool dispatch only
+ * knows the raw, unprefixed names, so a live `mcpArgs` exec has to be
+ * unwrapped back to the name Pi actually registered before it's matched
+ * against the available tool list.
+ */
+export function stripCursorMcpToolName(toolName: string): string {
+  const name = toolName.trim();
+  const prefix = `mcp_${MCP_PROVIDER_IDENTIFIER}_`;
+  return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+}
+
 function truncateReplayedResult(text: string): string {
   if (text.length <= MAX_REPLAYED_TOOL_RESULT_CHARS) return text;
   return `${text.slice(0, MAX_REPLAYED_TOOL_RESULT_CHARS)}\n\n[pi-cursor truncated this replayed tool result.]`;

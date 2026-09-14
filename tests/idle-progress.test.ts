@@ -173,6 +173,13 @@ describe("idle progress classification", () => {
     expect(interactionUpdateProgress("heartbeat")).toBe("liveness");
   });
 
+  it("treats step boundaries as known progress, not schema drift", () => {
+    // stepStarted/stepCompleted are known InteractionUpdate cases (agent.proto);
+    // they must not fall through to the unrecognized-case drift path.
+    expect(interactionUpdateProgress("stepStarted")).toBe("work");
+    expect(interactionUpdateProgress("stepCompleted")).toBe("work");
+  });
+
   it("classifies the liveness updates the dispatcher receives", () => {
     const liveness = [
       { case: "heartbeat" as const, value: create(HeartbeatUpdateSchema, {}) },
