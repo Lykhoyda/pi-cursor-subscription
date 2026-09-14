@@ -2,17 +2,17 @@
 
 Use your **Cursor** subscription models (Composer, Claude, GPT, Grok, and others) inside the [**Pi Coding Agent**](https://github.com/earendil-works/pi-coding-agent). This package registers a `cursor` provider that talks to Cursor's agent backend over HTTP/2 (Connect + Protobuf). No separate API key and no Cursor CLI subprocess per turn.
 
-Fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) **1.5.0** (based on upstream 1.4.34). Install from this repository only; it is not published to npm.
+Fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) **1.5.0** (based on upstream 1.4.34). Pushing a matching `v*` tag publishes `@lykhoyda/pi-cursor-subscription` to npm.
 
 > **Unofficial.** Not affiliated with Cursor / Anysphere. Community reverse-engineered wire details; Cursor can change protocols anytime. Use only on accounts you are allowed to access, and review the source before `/login cursor`.
 
 ## Requirements
 
-| | |
-| --- | --- |
-| **Pi Coding Agent / Pi AI** | `>= 0.80.0` |
-| **Bun** | `>= 1.4.0` (only supported runtime) |
-| **Cursor account** | Signed in via app, CLI, or `/login cursor` below |
+|                             |                                                  |
+| --------------------------- | ------------------------------------------------ |
+| **Pi Coding Agent / Pi AI** | `>= 0.80.0`                                      |
+| **Bun**                     | `>= 1.4.0` (only supported runtime)              |
+| **Cursor account**          | Signed in via app, CLI, or `/login cursor` below |
 
 ## Install
 
@@ -75,14 +75,14 @@ export PI_CURSOR_SYSTEM_CREDENTIALS=0
 
 ## Commands
 
-| Command | Description |
-| --- | --- |
-| `/login cursor` | Browser PKCE sign-in; refreshes the model catalog |
-| `/model cursor/<id>` | Select a Cursor model |
-| `/cursor.models` | List models, context windows, thinking levels |
-| `/cursor.models all` | Include internal tab/chat variants |
-| `/cursor.usage` | Usage quota TUI |
-| `/cursor.doctor` | Sanitized diagnostics |
+| Command              | Description                                       |
+| -------------------- | ------------------------------------------------- |
+| `/login cursor`      | Browser PKCE sign-in; refreshes the model catalog |
+| `/model cursor/<id>` | Select a Cursor model                             |
+| `/cursor.models`     | List models, context windows, thinking levels     |
+| `/cursor.models all` | Include internal tab/chat variants                |
+| `/cursor.usage`      | Usage quota TUI                                   |
+| `/cursor.doctor`     | Sanitized diagnostics                             |
 
 Reasoning effort (`off` … `max`) maps to Cursor's model variants. Restrict the picker in `~/.pi/agent/settings.json` with `enabledModels`.
 
