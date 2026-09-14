@@ -38,8 +38,8 @@
     "prepare": "bun run build || node scripts/prepare.mjs",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src tests",
-    "lint:fix": "eslint src tests --fix",
+    "lint": "oxlint src tests",
+    "lint:fix": "oxlint src tests --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "security-check": "bun scripts/security-check.ts",
@@ -71,15 +71,12 @@
   "devDependencies": {
     "@bufbuild/buf": "^1.72.0",
     "@bufbuild/protoc-gen-es": "^2.13.0",
-    "@eslint/js": "^10.0.1",
     "@types/bun": "^1.4.0",
     "@types/node": "^26.1.1",
-    "eslint": "^10.7.0",
-    "eslint-config-prettier": "^10.1.8",
-    "globals": "^17.7.0",
+    "oxlint": "^1.83.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.9.5",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.64.0"
+    "typescript": "^6.0.3"
   },
   "packageManager": "bun@1.4.0"
 }

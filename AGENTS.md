@@ -16,7 +16,7 @@ Guidance and repository standards for LLM coding agents working on `@lykhoyda/pi
 - **Transport:** In-process HTTP/2 (`src/client/h2-session.ts` for streaming, `src/client/h2-unary.ts` for unary RPCs) — no subprocess
 - **Toolchain:** Bun (package manager, script runner, test runner, bundler)
 - **Build & Test:** `bun build` via `scripts/build.ts`, `typescript` (strict ESM, `tsc` still
-  does the typechecking), `bun test`, `eslint`, `prettier`
+  does the typechecking), `bun test`, `oxlint`, `prettier`
 
 ---
 
@@ -37,8 +37,8 @@ bun run check
 | `bun test`               | Run unit tests (`bun test`)                                                                           |
 | `bun run test:watch`     | Run tests in interactive watch mode                                                                   |
 | `bun run test:legacy`    | Run legacy standalone test scripts (routing, thinking levels, usage, context normalization, CLI auth) |
-| `bun run lint`           | Run ESLint across `src/` and `tests/`                                                                 |
-| `bun run lint:fix`       | Automatically fix ESLint errors                                                                       |
+| `bun run lint`           | Run oxlint across `src/` and `tests/`                                                                 |
+| `bun run lint:fix`       | Automatically fix oxlint errors                                                                       |
 | `bun run format`         | Format codebase using Prettier                                                                        |
 | `bun run format:check`   | Verify Prettier formatting compliance                                                                 |
 | `bun run build`          | Bundle TypeScript sources with `bun build` into `dist/`                                               |
