@@ -8,6 +8,9 @@
     "type": "git",
     "url": "git+https://github.com/Lykhoyda/pi-cursor-subscription.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "homepage": "https://github.com/Lykhoyda/pi-cursor-subscription#readme",
   "bugs": {
     "url": "https://github.com/Lykhoyda/pi-cursor-subscription/issues"
