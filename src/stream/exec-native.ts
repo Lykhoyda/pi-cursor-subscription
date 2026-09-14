@@ -4,8 +4,8 @@
  * generating instead of being told to retry through MCP.
  *
  * Privileged cases (write, delete, shell, fetch) are gated by
- * `PI_CURSOR_NATIVE_EXEC` in `native-exec-policy.ts` — off by default in this
- * fork. Paths for the remaining handlers are confined to `process.cwd()`.
+ * `PI_CURSOR_NATIVE_EXEC` — off by default in this fork. Paths for the
+ * remaining handlers are confined to `process.cwd()`.
  */
 import { spawn } from "node:child_process";
 import {
