@@ -40,8 +40,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src tests",
     "lint:fix": "oxlint src tests --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
     "security-check": "bun scripts/security-check.ts",
     "proto:gen": "buf generate",
     "proto:sync": "bun scripts/proto-sync.ts",
@@ -54,7 +52,7 @@
     "smoke:models": "bun scripts/smoke-models.mjs",
     "smoke:stream": "bun scripts/smoke-stream.mjs",
     "smoke:wire": "bun scripts/smoke-wire.mjs",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun run security-check && bun run proto:check && bun run test && bun run test:legacy"
+    "check": "bun run typecheck && bun run lint && bun run security-check && bun run proto:check && bun run test && bun run test:legacy"
   },
   "pi": {
     "extensions": [
@@ -75,7 +73,6 @@
     "@types/node": "^26.1.1",
     "oxlint": "^1.83.0",
     "oxlint-tsgolint": "^7.0.2001",
-    "prettier": "^3.9.5",
     "typescript": "^6.0.3"
   },
   "packageManager": "bun@1.4.0"
