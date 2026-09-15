@@ -44,6 +44,7 @@ bun run check
 | `bun run proto:gen`      | Compile `proto/agent.proto` into `src/proto/agent_pb.ts` using `buf`                                  |
 | `bun run proto:check`    | Verify `src/proto/agent_pb.ts` is up-to-date with `proto/agent.proto`                                 |
 | `bun run proto:sync`     | Fetch and update protobuf descriptors from upstream                                                   |
+| `bun run changeset`      | Add a changeset for published behavior (skip infra-only PRs)                                          |
 
 ### Smoke Testing
 

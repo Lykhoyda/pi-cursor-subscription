@@ -39,6 +39,10 @@ recover the `.proto` when you only have an updated generated file from upstream.
 
 Do not include credentials, access tokens, refresh tokens, OAuth client secrets, or private account data in commits, issues, pull requests, or logs.
 
+## Versioning
+
+[Changesets](https://changesets.dev/). Behavior PRs: `bun run changeset` and commit `.changeset/<id>.md`. Infra-only: skip. Do not bump `package.json` by hand.
+
 ## Releases
 
-Maintainers publish releases by pushing a version tag (`vX.Y.Z`). Contributors must not publish the package or modify release credentials.
+Pending changesets on `main` open a `chore: version packages` PR. Merge that, then push matching `vX.Y.Z`; `publish.yml` publishes with OIDC. Contributors must not publish the package or modify release credentials.
