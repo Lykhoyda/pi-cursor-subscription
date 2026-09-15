@@ -21,10 +21,10 @@ jobs:
         with:
           bun-version: 1.4.0
 
+      # No registry-url: that writes _authToken + dummy NODE_AUTH_TOKEN and blocks OIDC.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
 
       - run: bun install --frozen-lockfile
       - run: bun run check
