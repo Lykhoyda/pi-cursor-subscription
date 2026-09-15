@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "Lykhoyda/pi-cursor-subscription" }
+  ],
+  "commit": false,
+  "access": "public",
+  "baseBranch": "main"
+}
