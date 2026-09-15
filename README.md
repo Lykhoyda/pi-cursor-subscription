@@ -56,6 +56,8 @@ export PI_CURSOR_NATIVE_EXEC=1
 
 With the flag on, native `fetch` still refuses loopback, private-network, link-local / cloud-metadata, and other internal addresses, including via redirects.
 
+With the flag on, native `shell` runs **unconfined** as your user (only its starting directory is workspace-checked); secret-named env vars are stripped from the child. See [SECURITY.md](SECURITY.md#privileged-native-exec) and run Pi in a container or VM if you enable this.
+
 Cursor-hosted web search / Exa fetch permission prompts are also **rejected** unless you opt in (`PI_CURSOR_HOSTED_WEB=1`). That flag is independent of native exec.
 
 See [SECURITY.md](SECURITY.md) for credential handling and URL allowlisting.
