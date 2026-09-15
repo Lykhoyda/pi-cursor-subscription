@@ -1,44 +1,69 @@
-import { describe, expect, it } from "bun:test";
-import { create } from "@bufbuild/protobuf";
+import { afterEach, describe, expect, it } from "bun:test";
+import { create, fromBinary } from "@bufbuild/protobuf";
 import {
-  InteractionQuerySchema,
-  WebSearchRequestQuerySchema,
-  AskQuestionInteractionQuerySchema,
+  AgentClientMessageSchema,
+  AgentServerMessageSchema,
   AskQuestionArgsSchema,
+  AskQuestionInteractionQuerySchema,
+  ExaFetchRequestQuerySchema,
+  InteractionQuerySchema,
   SwitchModeRequestQuerySchema,
+  WebSearchRequestQuerySchema,
+  type InteractionResponse,
 } from "../src/proto/agent_pb.js";
 import { handleInteractionQuery } from "../src/stream/interaction-query.js";
+import { processServerMessage } from "../src/stream/server-messages.js";
+import type { StreamState } from "../src/stream/types.js";
+
+const HOSTED_WEB_ENV = "PI_CURSOR_HOSTED_WEB";
+const NATIVE_EXEC_ENV = "PI_CURSOR_NATIVE_EXEC";
+
+afterEach(() => {
+  delete process.env[HOSTED_WEB_ENV];
+  delete process.env[NATIVE_EXEC_ENV];
+});
+
+function webSearchQuery(id: number) {
+  return create(InteractionQuerySchema, {
+    id,
+    query: {
+      case: "webSearchRequestQuery",
+      value: create(WebSearchRequestQuerySchema, {}),
+    },
+  });
+}
+
+function exaFetchQuery(id: number) {
+  return create(InteractionQuerySchema, {
+    id,
+    query: {
+      case: "exaFetchRequestQuery",
+      value: create(ExaFetchRequestQuerySchema, {}),
+    },
+  });
+}
 
 describe("handleInteractionQuery", () => {
-  it("rejects web search when explicitly disabled", () => {
+  it("rejects web search by default", () => {
     const frames: Uint8Array[] = [];
-    const query = create(InteractionQuerySchema, {
-      id: 7,
-      query: {
-        case: "webSearchRequestQuery",
-        value: create(WebSearchRequestQuerySchema, {}),
-      },
-    });
-    const result = handleInteractionQuery(query, (frame) => frames.push(frame), {
-      approveWeb: false,
-    });
-    expect(result.handled).toBe(true);
-    expect(result.action).toBe("web_search_rejected");
+    const result = handleInteractionQuery(webSearchQuery(7), (frame) => frames.push(frame));
+    expect(result).toMatchObject({ handled: true, action: "web_search_rejected" });
     expect(frames).toHaveLength(1);
   });
 
-  it("approves web search by default so hosted fetch can complete the turn", () => {
+  it("rejects Exa fetch by default", () => {
     const frames: Uint8Array[] = [];
-    const query = create(InteractionQuerySchema, {
-      id: 8,
-      query: {
-        case: "webSearchRequestQuery",
-        value: create(WebSearchRequestQuerySchema, {}),
-      },
+    const result = handleInteractionQuery(exaFetchQuery(9), (frame) => frames.push(frame));
+    expect(result).toMatchObject({ handled: true, action: "exa_fetch_rejected" });
+    expect(frames).toHaveLength(1);
+  });
+
+  it("approves web search when explicitly enabled", () => {
+    const frames: Uint8Array[] = [];
+    const result = handleInteractionQuery(webSearchQuery(8), (frame) => frames.push(frame), {
+      approveWeb: true,
     });
-    const result = handleInteractionQuery(query, (frame) => frames.push(frame));
-    expect(result.handled).toBe(true);
-    expect(result.action).toBe("web_search_approved");
+    expect(result).toMatchObject({ handled: true, action: "web_search_approved" });
     expect(frames).toHaveLength(1);
   });
 
@@ -74,15 +99,14 @@ describe("handleInteractionQuery", () => {
     expect(frames).toHaveLength(1);
   });
 
-  it("approves unnamed proto field #9 so hosted web fetch can continue", () => {
+  it("rejects unnamed proto field #9 by default", () => {
     const frames: Uint8Array[] = [];
     const query = create(InteractionQuerySchema, { id: 11 });
     (
       query as unknown as { $unknown: Array<{ no: number; wireType: number; data: Uint8Array }> }
     ).$unknown = [{ no: 9, wireType: 2, data: new Uint8Array([0x0a, 0x00]) }];
     const result = handleInteractionQuery(query, (frame) => frames.push(frame));
-    expect(result.handled).toBe(true);
-    expect(result.action).toBe("unknown_field_9_approved");
+    expect(result).toMatchObject({ handled: true, action: "unknown_field_9_rejected" });
     expect(frames).toHaveLength(1);
     expect(frames[0]!.byteLength).toBeGreaterThan(5);
   });
@@ -96,5 +120,68 @@ describe("handleInteractionQuery", () => {
     const result = handleInteractionQuery(query, (frame) => frames.push(frame));
     expect(result).toMatchObject({ handled: false, action: "unknown_field_99_rejected" });
     expect(frames).toHaveLength(0);
+  });
+});
+
+describe("hosted web live path", () => {
+  function dispatchExaFetch() {
+    const frames: Uint8Array[] = [];
+    const message = create(AgentServerMessageSchema, {
+      message: {
+        case: "interactionQuery",
+        value: exaFetchQuery(21),
+      },
+    });
+    const state: StreamState = {
+      toolCallIndex: 0,
+      pendingExecs: [],
+      outputTokens: 0,
+      totalTokens: 0,
+      turnEnded: false,
+    };
+    const progress = processServerMessage(
+      message,
+      new Map(),
+      [],
+      (frame) => frames.push(frame),
+      state,
+      () => {},
+      () => {},
+    );
+    return { frames, progress };
+  }
+
+  it("default-denies Exa fetch on the stream", () => {
+    const { frames, progress } = dispatchExaFetch();
+    expect(progress).toBe("work");
+    expect(frames).toHaveLength(1);
+    const answer = fromBinary(AgentClientMessageSchema, frames[0]!.subarray(5));
+    expect(answer.message.case).toBe("interactionResponse");
+    const response = answer.message.value as InteractionResponse;
+    expect(response.result.case).toBe("exaFetchRequestResponse");
+    expect(
+      (response.result.value as { result: { case: string } }).result.case,
+    ).toBe("rejected");
+  });
+
+  it("approves Exa fetch when PI_CURSOR_HOSTED_WEB=1", () => {
+    process.env[HOSTED_WEB_ENV] = "1";
+    const { frames, progress } = dispatchExaFetch();
+    expect(progress).toBe("work");
+    const answer = fromBinary(AgentClientMessageSchema, frames[0]!.subarray(5));
+    const response = answer.message.value as InteractionResponse;
+    expect(
+      (response.result.value as { result: { case: string } }).result.case,
+    ).toBe("approved");
+  });
+
+  it("does not treat PI_CURSOR_NATIVE_EXEC=1 as hosted-web opt-in", () => {
+    process.env[NATIVE_EXEC_ENV] = "1";
+    const { frames } = dispatchExaFetch();
+    const answer = fromBinary(AgentClientMessageSchema, frames[0]!.subarray(5));
+    const response = answer.message.value as InteractionResponse;
+    expect(
+      (response.result.value as { result: { case: string } }).result.case,
+    ).toBe("rejected");
   });
 });
