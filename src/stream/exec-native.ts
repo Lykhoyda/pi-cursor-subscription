@@ -8,6 +8,7 @@
  * remaining handlers are confined to `process.cwd()`.
  */
 import { spawn } from "node:child_process";
+import { lookup } from "node:dns/promises";
 import {
   existsSync,
   lstatSync,
@@ -19,6 +20,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { BlockList, isIP } from "node:net";
 import path from "node:path";
 
 import { create } from "@bufbuild/protobuf";
@@ -92,6 +94,28 @@ const MAX_SHELL_OUTPUT_BYTES = 512 * 1024;
 const MAX_FETCH_BYTES = 1024 * 1024;
 const SHELL_TIMEOUT_MS = 30_000;
 const FETCH_TIMEOUT_MS = 20_000;
+const MAX_FETCH_REDIRECTS = 5;
+
+/** Loopback, RFC1918, CGNAT, link-local (incl. cloud metadata), unspecified, multicast, reserved, ULA. */
+const PRIVATE_NETS = new BlockList();
+for (const [addr, prefix, family] of [
+  ["0.0.0.0", 8, "ipv4"],
+  ["10.0.0.0", 8, "ipv4"],
+  ["100.64.0.0", 10, "ipv4"],
+  ["127.0.0.0", 8, "ipv4"],
+  ["169.254.0.0", 16, "ipv4"],
+  ["172.16.0.0", 12, "ipv4"],
+  ["192.168.0.0", 16, "ipv4"],
+  ["224.0.0.0", 4, "ipv4"],
+  ["240.0.0.0", 4, "ipv4"],
+  ["::", 128, "ipv6"],
+  ["::1", 128, "ipv6"],
+  ["fc00::", 7, "ipv6"],
+  ["fe80::", 10, "ipv6"],
+  ["ff00::", 8, "ipv6"],
+] as const) {
+  PRIVATE_NETS.addSubnet(addr, prefix, family);
+}
 
 export type NativeExecFrame = { resultCase: string; value: unknown };
 
@@ -774,11 +798,8 @@ async function execFetch(args: Record<string, unknown>): Promise<NativeExecFrame
   } catch {
     return fetchError(url, "Invalid URL");
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return fetchError(url, "Only http and https URLs can be fetched");
-  }
   try {
-    const response = await fetch(parsed, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const response = await fetchPublic(parsed);
     const buf = Buffer.from(await response.arrayBuffer());
     const truncated = buf.byteLength > MAX_FETCH_BYTES;
     const content = buf.subarray(0, MAX_FETCH_BYTES).toString("utf8");
@@ -798,6 +819,41 @@ async function execFetch(args: Record<string, unknown>): Promise<NativeExecFrame
     };
   } catch (error) {
     return fetchError(url, error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Follows redirects by hand so every hop is re-checked against the scheme and
+ * private-address rules; a public URL must not be able to bounce into the LAN.
+ */
+async function fetchPublic(url: URL): Promise<Response> {
+  const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  let target = url;
+  for (let hop = 0; hop <= MAX_FETCH_REDIRECTS; hop++) {
+    if (target.protocol !== "http:" && target.protocol !== "https:") {
+      throw new Error("Only http and https URLs can be fetched");
+    }
+    await assertPublicHost(target);
+    const response = await fetch(target, { redirect: "manual", signal });
+    const location = response.headers.get("location");
+    if (response.status < 300 || response.status > 399 || !location) return response;
+    target = new URL(location, target);
+  }
+  throw new Error(`Too many redirects (max ${MAX_FETCH_REDIRECTS})`);
+}
+
+// ponytail: resolve-then-fetch leaves a DNS-rebinding window; pin the connect
+// address via a custom dispatcher if native fetch ever ships default-on.
+async function assertPublicHost(url: URL): Promise<void> {
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  const addresses = isIP(host)
+    ? [host]
+    : (await lookup(host, { all: true })).map((entry) => entry.address);
+  const blocked = addresses.some((address) =>
+    PRIVATE_NETS.check(address, isIP(address) === 6 ? "ipv6" : "ipv4"),
+  );
+  if (blocked || addresses.length === 0) {
+    throw new Error(`Refusing to fetch private or internal address for host ${url.hostname}`);
   }
 }
 
