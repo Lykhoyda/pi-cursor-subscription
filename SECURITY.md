@@ -33,6 +33,8 @@ To restore upstream 1.4.31+ behaviour:
 export PI_CURSOR_NATIVE_EXEC=1
 ```
 
+With the flag on, native `shell` is **not sandboxed**: only the starting cwd is workspace-checked; the command can `cd` anywhere your user can. The child environment is `process.env` minus any variable whose name contains `TOKEN`, `SECRET`, `PASSWORD`/`PASSWD`, `API_KEY`, `PRIVATE_KEY`, or `CREDENTIAL` (so `CURSOR_ACCESS_TOKEN` never reaches a model-controlled shell), and the 30s timeout SIGKILLs the process group. Run Pi inside a container or VM if you opt in.
+
 ### Hosted web / Exa fetch
 
 By default this fork **rejects** Cursor-hosted web search, Exa search, Exa fetch, and unnamed web-fetch permission prompts. Those turns should use Pi MCP tools (with Pi's confirmation UI) instead. This is independent of `PI_CURSOR_NATIVE_EXEC`.
