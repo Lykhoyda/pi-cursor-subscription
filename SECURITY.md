@@ -33,6 +33,16 @@ To restore upstream 1.4.31+ behaviour:
 export PI_CURSOR_NATIVE_EXEC=1
 ```
 
+### Hosted web / Exa fetch
+
+By default this fork **rejects** Cursor-hosted web search, Exa search, Exa fetch, and unnamed web-fetch permission prompts. Those turns should use Pi MCP tools (with Pi's confirmation UI) instead. This is independent of `PI_CURSOR_NATIVE_EXEC`.
+
+To restore auto-approval of hosted web/Exa:
+
+```bash
+export PI_CURSOR_HOSTED_WEB=1
+```
+
 ### System credential reuse
 
 By default, `pi-cursor` may read Cursor CLI Keychain items and Cursor IDE `state.vscdb` to reuse an existing login. Disable that behavior with:

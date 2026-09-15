@@ -162,6 +162,7 @@ src/
 | Variable                                       | Description                                                                                                                                                          |
 | :--------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PI_CURSOR_NATIVE_EXEC`                        | Set to `1` to allow Cursor-native shell/fetch/write/delete on the Run RPC (default: off)                                                                             |
+| `PI_CURSOR_HOSTED_WEB`                         | Set to `1` to auto-approve Cursor-hosted web search / Exa search / Exa fetch / unnamed web-fetch prompts (default: reject)                                           |
 | `CURSOR_ACCESS_TOKEN`                          | Static access token override for Cursor API calls                                                                                                                    |
 | `PI_CURSOR_AGENT_URL` / `CURSOR_AGENT_URL`     | Base URL override for Agent Connect RPC (default: `https://agentn.us.api5.cursor.sh`)                                                                                |
 | `PI_CURSOR_SYSTEM_CREDENTIALS`                 | Set to `0` or `false` to disable Keychain / IDE DB credential harvesting                                                                                             |

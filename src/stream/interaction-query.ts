@@ -55,7 +55,7 @@ function encodeLengthDelimitedField(fieldNo: number, data: Uint8Array): number[]
 
 /**
  * Field #9 is unnamed in the generated proto (web-fetch shaped). Default is to
- * approve so hosted fetch can continue; `{ approveWeb: false }` still rejects.
+ * reject; `{ approveWeb: true }` still approves.
  *
  * Wire shape mirrors ExaFetch/WebSearch: response oneof field 1 = approved.
  */
@@ -296,20 +296,19 @@ export type InteractionQueryHandleResult = {
 
 /**
  * Always attempt to answer InteractionQuery so the upstream run does not park.
- * Web/search is approved so Cursor-hosted fetch/search can complete the turn
- * instead of forcing the model to re-plan through Pi tools. Pass
- * `{ approveWeb: false }` to reject those prompts.
+ * Hosted web/Exa/field-9 prompts are rejected unless `{ approveWeb: true }`
+ * (live path: `PI_CURSOR_HOSTED_WEB=1`).
  */
 export function handleInteractionQuery(
   query: InteractionQuery,
   sendFrame: (data: Uint8Array) => void,
   options?: { approveWeb?: boolean },
 ): InteractionQueryHandleResult {
-  const approveWeb = options?.approveWeb !== false;
+  const approveWeb = options?.approveWeb === true;
   const queryCase = query.query.case;
 
   // Field #9 is unnamed in the generated proto (web-fetch permission on current
-  // Cursor builds). Answer it so the Run RPC continues; default is approve.
+  // Cursor builds). Answer it so the Run RPC continues; default is reject.
   if (hasUnknownInteractionField(query, CURSOR_WEB_FETCH_INTERACTION_FIELD)) {
     if (approveWeb) {
       sendFrame(frameConnectMessage(buildCursorWebFetchInteractionApprovalBytes(query.id)));

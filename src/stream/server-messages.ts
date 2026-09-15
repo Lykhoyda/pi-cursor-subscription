@@ -191,7 +191,9 @@ export function processServerMessage(
   }
   if (msgCase === "interactionQuery") {
     const query = msg.message.value as InteractionQuery;
-    const result = handleInteractionQuery(query, sendFrame, { approveWeb: true });
+    const result = handleInteractionQuery(query, sendFrame, {
+      approveWeb: cursorEnvBoolean("HOSTED_WEB", false),
+    });
     lifecycleLog("interaction_query", {
       id: query.id,
       queryCase: result.queryCase,
