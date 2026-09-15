@@ -52,6 +52,7 @@
     "smoke:models": "bun scripts/smoke-models.mjs",
     "smoke:stream": "bun scripts/smoke-stream.mjs",
     "smoke:wire": "bun scripts/smoke-wire.mjs",
+    "smoke:pi-grok": "bun scripts/smoke-pi-grok.mjs",
     "check": "bun run typecheck && bun run lint && bun run security-check && bun run proto:check && bun run test && bun run test:legacy",
     "changeset": "changeset",
     "changeset:version": "changeset version"

@@ -1,0 +1,286 @@
+/**
+ * Live end-to-end smoke: Pi Coding Agent + this package as the Cursor provider + Grok 4.6.
+ *
+ * Proves the whole path a user exercises — `pi` loads `dist/index.js`, the extension
+ * registers the `cursor` provider, `--model grok-4.6` resolves to a real Cursor variant,
+ * and a trivial prompt streams a non-empty reply back through pi's JSON event stream.
+ *
+ * Usage: bun run smoke:pi-grok
+ *
+ * Credentials come from the production cascade (env → Pi auth.json → Keychain → IDE DB).
+ * Only the credential *source* is ever printed. Any error text is run through
+ * redactSecrets() before it reaches stdout/stderr.
+ *
+ * Env:
+ *   CURSOR_SMOKE_MODEL       collapsed Cursor model id to test (default: first Grok 4.6 id found)
+ *   CURSOR_SMOKE_THINKING    pi thinking level (default: low)
+ *   CURSOR_SMOKE_PROMPT      user prompt (default: a one-word pong request)
+ *   CURSOR_SMOKE_TIMEOUT_MS  hard kill for the pi process (default: 120000)
+ *   PI_BIN                   explicit pi executable (default: `pi` on PATH, then node_modules/.bin/pi)
+ */
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+import { getStartupCursorAccessToken } from "../src/extension/auth.ts";
+import { augmentCursorModels } from "../src/models/parameterized.ts";
+import { processModels } from "../src/models/processing.ts";
+import { discoverCursorCatalog } from "../src/stream/native-core.ts";
+import { redactSecrets } from "../src/utils/security.ts";
+
+const ROOT = new URL("..", import.meta.url).pathname;
+const DIST_ENTRY = join(ROOT, "dist", "index.js");
+const DEFAULT_MODEL_PREFERENCE = ["grok-4.6", "cursor-grok-4.6"];
+const GROK_46_ID = /grok-4\.6/;
+const DEFAULT_PROMPT = "Reply with exactly one word: pong";
+const DEFAULT_THINKING = "low";
+const DEFAULT_TIMEOUT_MS = 120_000;
+const REPLY_PREVIEW_CHARS = 200;
+
+function log(step, message) {
+  console.log(`[smoke-pi-grok] ${step}: ${redactSecrets(message)}`);
+}
+
+function fail(step, message, details) {
+  console.error(`[smoke-pi-grok] FAIL ${step}: ${redactSecrets(message)}`);
+  if (details) console.error(redactSecrets(details).trimEnd());
+  process.exit(1);
+}
+
+async function resolveCredentialSource() {
+  const resolved = await getStartupCursorAccessToken();
+  if (!resolved) {
+    fail(
+      "auth",
+      "no Cursor credential resolved. Set CURSOR_ACCESS_TOKEN, run `/login cursor` in pi, or sign in to the Cursor app/CLI.",
+    );
+  }
+  log("auth", `credential source=${resolved.source}`);
+  return resolved.accessToken;
+}
+
+async function pickGrokModel(accessToken) {
+  // discoverCursorCatalog() also persists the on-disk catalog cache, which is what lets
+  // pi register Grok 4.6 at startup — the bundled fallback catalog has no Grok 4.6 row.
+  const catalog = await discoverCursorCatalog(accessToken);
+  const processed = processModels(
+    augmentCursorModels(catalog.rawModels, catalog.parameterizedModels),
+  );
+  log(
+    "catalog",
+    `raw=${catalog.rawModels.length} parameterized=${catalog.parameterizedModels.length} registered=${processed.length}`,
+  );
+
+  const byId = new Map(processed.map((m) => [m.id, m]));
+  const override = process.env.CURSOR_SMOKE_MODEL?.trim();
+  const candidateIds = override
+    ? [override]
+    : [
+        ...DEFAULT_MODEL_PREFERENCE,
+        ...processed
+          .map((m) => m.id)
+          .filter((id) => GROK_46_ID.test(id) && !/-(fast|max)(-|$)/.test(id)),
+      ];
+  const model = candidateIds.map((id) => byId.get(id)).find(Boolean);
+  if (!model) {
+    const grokIds = processed.map((m) => m.id).filter((id) => /grok/i.test(id));
+    fail(
+      "model",
+      override
+        ? `CURSOR_SMOKE_MODEL=${override} is not in the provider's registered catalog`
+        : "no Grok 4.6 model id registered by this provider",
+      `grok ids available: ${grokIds.join(", ") || "(none)"}`,
+    );
+  }
+
+  const thinking = process.env.CURSOR_SMOKE_THINKING?.trim() || DEFAULT_THINKING;
+  const cursorEffort = model.effortMap?.[thinking];
+  if (model.supportsEffort && !cursorEffort) {
+    const allowed = Object.entries(model.effortMap ?? {})
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    fail(
+      "model",
+      `thinking level "${thinking}" is not offered for ${model.id}`,
+      `allowed: ${allowed.join(", ")}`,
+    );
+  }
+  const rawVariant = model.supportsEffort
+    ? model.rawModelByEffort?.[cursorEffort] ?? model.id
+    : model.id;
+  log("model", `id=${model.id} name="${model.name}" thinking=${thinking} -> cursor=${rawVariant}`);
+  return { model, thinking, rawVariant };
+}
+
+function run(cmd, args, options = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], ...options });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timer = options.timeoutMs
+      ? setTimeout(() => {
+          timedOut = true;
+          child.kill("SIGKILL");
+        }, options.timeoutMs)
+      : undefined;
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({ code: -1, stdout, stderr: `${stderr}\n${error.message}`, timedOut });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ code, stdout, stderr, timedOut });
+    });
+  });
+}
+
+async function buildDist() {
+  const result = await run(process.execPath, ["run", "build"]);
+  if (result.code !== 0) fail("build", "bun run build failed", result.stderr || result.stdout);
+  if (!existsSync(DIST_ENTRY)) fail("build", `${DIST_ENTRY} missing after build`);
+  log("build", "dist/index.js ready");
+}
+
+function locatePi() {
+  const explicit = process.env.PI_BIN?.trim();
+  if (explicit) return explicit;
+  const onPath = Bun.which("pi");
+  if (onPath) return onPath;
+  const local = join(ROOT, "node_modules", ".bin", "pi");
+  if (existsSync(local)) return local;
+  fail(
+    "pi",
+    "pi executable not found. Install Pi Coding Agent, run `bun install` (peer dep), or set PI_BIN.",
+  );
+}
+
+function parseJsonLines(stdout) {
+  const events = [];
+  const nonJson = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      events.push(JSON.parse(trimmed));
+    } catch {
+      nonJson.push(trimmed);
+    }
+  }
+  return { events, nonJson };
+}
+
+function summarizeAssistant(events) {
+  let deltaCount = 0;
+  let streamed = "";
+  const errorEvents = [];
+  let finalMessage;
+
+  for (const event of events) {
+    if (event.type === "message_update") {
+      const inner = event.assistantMessageEvent;
+      if (inner?.type === "text_delta" && typeof inner.delta === "string") {
+        deltaCount += 1;
+        streamed += inner.delta;
+      }
+      if (inner?.type === "error") errorEvents.push(inner);
+    }
+    if (event.type === "error") errorEvents.push(event);
+    if (event.type === "message_end" && event.message?.role === "assistant") {
+      finalMessage = event.message;
+    }
+  }
+
+  const finalText = (finalMessage?.content ?? [])
+    .filter((part) => part?.type === "text" && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("");
+
+  return { deltaCount, streamed, finalText, finalMessage, errorEvents };
+}
+
+async function runPi({ model, thinking }) {
+  const piBin = locatePi();
+  const version = await run(piBin, ["--version"]);
+  log("pi", `bin=${piBin} version=${(version.stdout || version.stderr).trim() || "unknown"}`);
+
+  const prompt = process.env.CURSOR_SMOKE_PROMPT?.trim() || DEFAULT_PROMPT;
+  const timeoutMs = Number(process.env.CURSOR_SMOKE_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
+  const args = [
+    "--print",
+    "--mode",
+    "json",
+    "--no-extensions",
+    "--no-skills",
+    "--no-prompt-templates",
+    "--no-context-files",
+    "--no-themes",
+    "--no-session",
+    "--no-tools",
+    "--extension",
+    DIST_ENTRY,
+    "--provider",
+    "cursor",
+    "--model",
+    model.id,
+    "--thinking",
+    thinking,
+    // No `--` separator: pi < 0.85 rejects it, and the prompt never starts with a dash.
+    prompt,
+  ];
+  log("pi", `prompt="${prompt}" timeout=${timeoutMs}ms`);
+
+  const startedAt = Date.now();
+  const result = await run(piBin, args, { timeoutMs });
+  const elapsedMs = Date.now() - startedAt;
+
+  if (result.timedOut) fail("pi", `no completion within ${timeoutMs}ms`, result.stderr);
+  if (result.code !== 0) {
+    fail("pi", `exited with code ${result.code}`, `${result.stderr}\n${result.stdout}`);
+  }
+
+  const { events, nonJson } = parseJsonLines(result.stdout);
+  const summary = summarizeAssistant(events);
+
+  if (summary.errorEvents.length > 0) {
+    fail("stream", "pi reported error events", JSON.stringify(summary.errorEvents, null, 2));
+  }
+  if (!summary.finalMessage) {
+    fail("stream", "no assistant message_end in pi output", `${result.stderr}\n${nonJson.join("\n")}`);
+  }
+  const { provider, api, model: reportedModel, stopReason, usage } = summary.finalMessage;
+  if (provider !== "cursor" || api !== "cursor-native") {
+    fail("stream", `reply did not come through this provider (provider=${provider} api=${api})`);
+  }
+  if (reportedModel !== model.id) {
+    fail("stream", `reply model mismatch: expected ${model.id}, got ${reportedModel}`);
+  }
+  if (stopReason !== "stop") {
+    fail(
+      "stream",
+      `assistant stopReason=${stopReason}`,
+      summary.finalMessage.errorMessage ?? JSON.stringify(summary.finalMessage, null, 2),
+    );
+  }
+  if (summary.deltaCount === 0) fail("stream", "no text_delta events streamed");
+  if (!summary.finalText.trim()) fail("stream", "assistant reply text is empty");
+
+  const preview = summary.finalText.replace(/\s+/g, " ").trim().slice(0, REPLY_PREVIEW_CHARS);
+  log(
+    "stream",
+    `text_delta=${summary.deltaCount} streamedChars=${summary.streamed.length} elapsed=${elapsedMs}ms ` +
+      `usage(in=${usage?.input ?? "?"} out=${usage?.output ?? "?"})`,
+  );
+  log("reply", `"${preview}"`);
+  if (!/pong/i.test(summary.finalText)) {
+    log("reply", "note: reply did not contain the requested word; streaming still verified");
+  }
+}
+
+const accessToken = await resolveCredentialSource();
+const selection = await pickGrokModel(accessToken);
+await buildDist();
+await runPi(selection);
+console.log("smoke-pi-grok: ok");
