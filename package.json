@@ -1,6 +1,6 @@
 {
   "name": "@lykhoyda/pi-cursor-subscription",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Cursor provider for Pi Coding Agent. Fork of @rahularya01/pi-cursor with privileged native exec off by default.",
   "author": "Anton Lykhoyda",
   "license": "MIT",
