@@ -985,7 +985,20 @@ function truncateUtf8(text: string, maxBytes: number): string {
   return `${buf.subarray(0, end).toString("utf8")}\n\n[truncated]`;
 }
 
-function runShellCommand(
+/** Env var names that must not reach a model-controlled shell (covers CURSOR_ACCESS_TOKEN). */
+const SECRET_ENV_KEY = /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY|CREDENTIAL/i;
+
+export function shellEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !SECRET_ENV_KEY.test(key)));
+}
+
+/**
+ * The command itself is not confined — only its starting cwd is workspace-checked
+ * (`cd /` works). Env is scrubbed of secret-looking names and the timeout SIGKILLs
+ * the whole process group so `trap '' TERM` or a backgrounded grandchild cannot
+ * outlive it or hold the stdout pipe open.
+ */
+export function runShellCommand(
   command: string,
   cwd: string,
   timeoutMs: number,
@@ -1003,8 +1016,9 @@ function runShellCommand(
       isWin ? ["/d", "/s", "/c", command] : ["-c", command],
       {
         cwd,
-        env: process.env,
+        env: shellEnv(),
         windowsHide: true,
+        detached: !isWin,
       },
     );
     let stdout = "";
@@ -1012,7 +1026,16 @@ function runShellCommand(
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
+      // ponytail: Windows kills cmd.exe only; use taskkill /T if orphaned children matter there.
+      if (isWin || child.pid === undefined) {
+        child.kill();
+        return;
+      }
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
     }, timeoutMs);
     timer.unref?.();
     child.stdout?.on("data", (chunk: Buffer) => {
