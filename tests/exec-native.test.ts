@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -26,10 +26,12 @@ describe("native exec workspace paths", () => {
 describe("native exec handlers", () => {
   const prevCwd = process.cwd();
   let dir: string;
+  let outside: string;
 
   afterEach(() => {
     process.chdir(prevCwd);
     if (dir) rmSync(dir, { recursive: true, force: true });
+    if (outside) rmSync(outside, { recursive: true, force: true });
   });
 
   it("reads a workspace file on the exec channel", () => {
@@ -60,6 +62,27 @@ describe("native exec handlers", () => {
     expect(ls?.kind).toBe("sync");
     if (ls?.kind !== "sync") return;
     expect((ls.frame.value as { result: { case: string } }).result.case).toBe("success");
+  });
+
+  it("denies write and delete through a workspace dir that symlinks outside", () => {
+    dir = mkdtempSync(path.join(tmpdir(), "pi-cursor-exec-"));
+    outside = mkdtempSync(path.join(tmpdir(), "pi-cursor-outside-"));
+    symlinkSync(outside, path.join(dir, "linkdir"));
+    process.chdir(dir);
+    const write = dispatchNativeExec("writeArgs", {
+      path: "linkdir/pwned.txt",
+      fileText: "escaped\n",
+    });
+    expect(write?.kind).toBe("sync");
+    if (write?.kind !== "sync") return;
+    expect((write.frame.value as { result: { case: string } }).result.case).toBe(
+      "permissionDenied",
+    );
+    expect(existsSync(path.join(outside, "pwned.txt"))).toBe(false);
+    const del = dispatchNativeExec("deleteArgs", { path: "linkdir/new.txt" });
+    expect(del?.kind).toBe("sync");
+    if (del?.kind !== "sync") return;
+    expect((del.frame.value as { result: { case: string } }).result.case).toBe("permissionDenied");
   });
 
   it("greps workspace files and rejects an empty pattern", () => {

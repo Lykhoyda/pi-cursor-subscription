@@ -123,7 +123,13 @@ export function resolveInWorkspace(
   const candidate = path.resolve(root, inputPath && inputPath.length > 0 ? inputPath : ".");
   let comparable = candidate;
   try {
-    if (existsSync(candidate)) comparable = realpathSync(candidate);
+    let ancestor = candidate;
+    while (!existsSync(ancestor)) {
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) break;
+      ancestor = parent;
+    }
+    comparable = path.join(realpathSync(ancestor), path.relative(ancestor, candidate));
   } catch {
     comparable = candidate;
   }
