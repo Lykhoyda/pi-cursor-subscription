@@ -64,6 +64,23 @@ function resultCase(frames: Uint8Array[]): string {
   return (response.result.value as { result: { case: string } }).result.case;
 }
 
+function readLenDelim(
+  bytes: Uint8Array,
+  offset = 0,
+): { fieldNo: number; value: Uint8Array; next: number } {
+  const fieldNo = bytes[offset]! >> 3;
+  let length = 0;
+  let shift = 0;
+  let index = offset + 1;
+  while (index < bytes.length) {
+    const byte = bytes[index++]!;
+    length |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) break;
+    shift += 7;
+  }
+  return { fieldNo, value: bytes.subarray(index, index + length), next: index + length };
+}
+
 describe("handleInteractionQuery", () => {
   it("rejects web search by default", () => {
     const frames: Uint8Array[] = [];
@@ -136,7 +153,19 @@ describe("handleInteractionQuery", () => {
     const result = handleInteractionQuery(query, (frame) => frames.push(frame));
     expect(result).toMatchObject({ handled: true, action: "unknown_field_9_rejected" });
     expect(frames).toHaveLength(1);
-    expect(frames[0]!.byteLength).toBeGreaterThan(5);
+    const client = readLenDelim(frames[0]!.subarray(5));
+    expect(client.fieldNo).toBe(6);
+    expect(client.value[0]).toBe(0x08);
+    expect(client.value[1]).toBe(11);
+    const field9 = readLenDelim(client.value, 2);
+    expect(field9.fieldNo).toBe(9);
+    const rejected = readLenDelim(field9.value);
+    expect(rejected.fieldNo).toBe(2);
+    const reason = readLenDelim(rejected.value);
+    expect(reason.fieldNo).toBe(1);
+    expect(new TextDecoder().decode(reason.value)).toBe(
+      "Not available through the Pi Cursor provider. Use Pi tools (web_search, fetch, bash, etc.) instead.",
+    );
   });
 
   it("fails closed for unknown future interaction fields", () => {
