@@ -33,6 +33,8 @@ To restore upstream 1.4.31+ behaviour:
 export PI_CURSOR_NATIVE_EXEC=1
 ```
 
+Even with the flag on, native `fetch` only allows `http`/`https` to public addresses: loopback, RFC1918, CGNAT, link-local (cloud metadata), and IPv6 ULA targets are refused, and every redirect hop is re-checked.
+
 ### Hosted web / Exa fetch
 
 By default this fork **rejects** Cursor-hosted web search, Exa search, Exa fetch, and unnamed web-fetch permission prompts. Those turns should use Pi MCP tools (with Pi's confirmation UI) instead. This is independent of `PI_CURSOR_NATIVE_EXEC`.

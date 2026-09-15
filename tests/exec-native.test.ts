@@ -116,6 +116,80 @@ describe("native exec handlers", () => {
   });
 });
 
+describe("native fetch refuses private and internal targets", () => {
+  const realFetch = globalThis.fetch;
+  let calls: string[];
+
+  function stubFetch(respond: (url: string) => Response): void {
+    calls = [];
+    globalThis.fetch = ((input: URL | Request | string) => {
+      calls.push(String(input));
+      return Promise.resolve(respond(String(input)));
+    }) as typeof fetch;
+  }
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  async function runFetch(url: string) {
+    const dispatched = dispatchNativeExec("fetchArgs", { url });
+    if (dispatched?.kind !== "async") throw new Error("fetchArgs should dispatch async");
+    const frame = await dispatched.run();
+    return (frame.value as { result: { case: string; value: { error?: string; content?: string } } })
+      .result;
+  }
+
+  it.each([
+    "http://127.0.0.1:8080/",
+    "http://[::1]/",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://10.0.0.1/",
+    "http://172.16.5.5/",
+    "http://192.168.1.1/",
+    "http://100.64.0.1/",
+    "http://0.0.0.0/",
+    "http://[fd00::1]/",
+    "http://[fe80::1]/",
+    "http://[::ffff:127.0.0.1]/",
+    "http://2130706433/",
+    "http://localhost/",
+  ])("denies %s without calling fetch", async (url) => {
+    stubFetch(() => new Response("leak"));
+    const result = await runFetch(url);
+    expect(result.case).toBe("error");
+    expect(result.value.error).toContain("private or internal");
+    expect(calls).toEqual([]);
+  });
+
+  it("re-checks redirect hops instead of following them into the LAN", async () => {
+    stubFetch(() => new Response(null, { status: 302, headers: { location: "http://127.0.0.1/" } }));
+    const result = await runFetch("http://93.184.216.34/");
+    expect(result.case).toBe("error");
+    expect(result.value.error).toContain("private or internal");
+    expect(calls).toEqual(["http://93.184.216.34/"]);
+  });
+
+  it("refuses non-http redirect targets", async () => {
+    stubFetch(() => new Response(null, { status: 302, headers: { location: "file:///etc/passwd" } }));
+    const result = await runFetch("http://93.184.216.34/");
+    expect(result.case).toBe("error");
+    expect(result.value.error).toContain("Only http and https");
+  });
+
+  it("still fetches public hosts and follows public redirects", async () => {
+    stubFetch((url) =>
+      url === "http://93.184.216.34/"
+        ? new Response(null, { status: 301, headers: { location: "https://93.184.216.34/x" } })
+        : new Response("public body"),
+    );
+    const result = await runFetch("http://93.184.216.34/");
+    expect(result.case).toBe("success");
+    expect(result.value.content).toBe("public body");
+    expect(calls).toEqual(["http://93.184.216.34/", "https://93.184.216.34/x"]);
+  });
+});
+
 describe("conversation id rotation", () => {
   it("mints a new conversation id and drops the checkpoint", () => {
     const stored: StoredConversation = {
