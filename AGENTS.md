@@ -53,7 +53,10 @@ bun run smoke:auth    # Smoke test authentication resolution
 bun run smoke:models  # Smoke test model discovery RPC
 bun run smoke:stream  # Smoke test HTTP/2 streaming
 bun run smoke:wire    # Smoke test low-level wire protocol frames
+bun run smoke:pi-grok # End-to-end: pi CLI + this extension + Grok 4.6 streams a reply (uses the auth cascade; prints credential source only)
 ```
+
+`smoke:pi-grok` is the agent-runnable regression check. It discovers a live Grok 4.6 id from the provider catalog, builds `dist/`, runs `pi --print --mode json` with only this extension loaded, and asserts a non-empty streamed reply on `provider=cursor` / `api=cursor-native`. Override with `CURSOR_SMOKE_MODEL`, `CURSOR_SMOKE_THINKING`, `CURSOR_SMOKE_PROMPT`, `CURSOR_SMOKE_TIMEOUT_MS`, `PI_BIN`.
 
 ---
 
