@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1
+
+### Patch Changes
+
+- [#11](https://github.com/Lykhoyda/pi-cursor-subscription/pull/11) [`1b73c71`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/1b73c71e648b440ec1a65fa97704468e7d2d72e9) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Deny native write/delete through a workspace directory that is a symlink to a parent outside the workspace (`PI_CURSOR_NATIVE_EXEC=1`).
+
 ## [1.5.0] - 2026-09-14
 
 First release of this fork (`@lykhoyda/pi-cursor-subscription`), based on `@rahularya01/pi-cursor` 1.4.34.
