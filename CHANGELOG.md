@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2
+
+### Patch Changes
+
+- [#14](https://github.com/Lykhoyda/pi-cursor-subscription/pull/14) [`3bf64a9`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/3bf64a90698f39a3ba33fe9351cb5cf433fb4bd6) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Reject Cursor-hosted web search, Exa search/fetch, and unnamed web-fetch prompts unless `PI_CURSOR_HOSTED_WEB=1`.
+
 ## 1.5.1
 
 ### Patch Changes
