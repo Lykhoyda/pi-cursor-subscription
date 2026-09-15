@@ -12,7 +12,7 @@
  * redactSecrets() before it reaches stdout/stderr.
  *
  * Env:
- *   CURSOR_SMOKE_MODEL       collapsed Cursor model id to test (default: first Grok 4.6 id found)
+ *   CURSOR_SMOKE_MODEL       collapsed Grok 4.6 model id to test (default: first Grok 4.6 id found)
  *   CURSOR_SMOKE_THINKING    pi thinking level (default: low)
  *   CURSOR_SMOKE_PROMPT      user prompt (default: a one-word pong request)
  *   CURSOR_SMOKE_TIMEOUT_MS  hard kill for the pi process (default: 120000)
@@ -21,33 +21,65 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { getStartupCursorAccessToken } from "../src/extension/auth.ts";
-import { augmentCursorModels } from "../src/models/parameterized.ts";
-import { processModels } from "../src/models/processing.ts";
-import { discoverCursorCatalog } from "../src/stream/native-core.ts";
-import { redactSecrets } from "../src/utils/security.ts";
+import { getStartupCursorAccessToken } from "../src/extension/auth.js";
+import { augmentCursorModels } from "../src/models/parameterized.js";
+import { processModels, type ProcessedModel } from "../src/models/processing.js";
+import { discoverCursorCatalog } from "../src/stream/native-core.js";
+import type { PiThinkingLevel } from "../src/types/enums.js";
+import { redactSecrets } from "../src/utils/security.js";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST_ENTRY = join(ROOT, "dist", "index.js");
 const DEFAULT_MODEL_PREFERENCE = ["grok-4.6", "cursor-grok-4.6"];
 const GROK_46_ID = /grok-4\.6/;
 const DEFAULT_PROMPT = "Reply with exactly one word: pong";
-const DEFAULT_THINKING = "low";
+const DEFAULT_THINKING: PiThinkingLevel = "low";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const REPLY_PREVIEW_CHARS = 200;
 
-function log(step, message) {
+interface RunResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+}
+
+interface Selection {
+  model: ProcessedModel;
+  thinking: PiThinkingLevel;
+}
+
+/** The subset of pi's `--mode json` event lines this smoke reads. */
+interface PiEvent {
+  type: string;
+  assistantMessageEvent?: { type: string; delta?: string };
+  message?: PiAssistantMessage;
+}
+
+interface PiAssistantMessage {
+  role: string;
+  content?: Array<{ type: string; text?: string }>;
+  provider?: string;
+  api?: string;
+  model?: string;
+  stopReason?: string;
+  errorMessage?: string;
+  usage?: { input?: number; output?: number };
+}
+
+function log(step: string, message: string): void {
   console.log(`[smoke-pi-grok] ${step}: ${redactSecrets(message)}`);
 }
 
-function fail(step, message, details) {
+function fail(step: string, message: string, details?: string): never {
   console.error(`[smoke-pi-grok] FAIL ${step}: ${redactSecrets(message)}`);
   if (details) console.error(redactSecrets(details).trimEnd());
   process.exit(1);
 }
 
-async function resolveCredentialSource() {
+async function resolveCredentialSource(): Promise<string> {
   const resolved = await getStartupCursorAccessToken();
   if (!resolved) {
     fail(
@@ -59,7 +91,7 @@ async function resolveCredentialSource() {
   return resolved.accessToken;
 }
 
-async function pickGrokModel(accessToken) {
+async function pickGrokModel(accessToken: string): Promise<Selection> {
   // discoverCursorCatalog() also persists the on-disk catalog cache, which is what lets
   // pi register Grok 4.6 at startup — the bundled fallback catalog has no Grok 4.6 row.
   const catalog = await discoverCursorCatalog(accessToken);
@@ -71,29 +103,27 @@ async function pickGrokModel(accessToken) {
     `raw=${catalog.rawModels.length} parameterized=${catalog.parameterizedModels.length} registered=${processed.length}`,
   );
 
-  const byId = new Map(processed.map((m) => [m.id, m]));
+  const grok46Ids = processed.map((m) => m.id).filter((id) => GROK_46_ID.test(id));
   const override = process.env.CURSOR_SMOKE_MODEL?.trim();
+  if (override && !GROK_46_ID.test(override)) {
+    fail("model", `CURSOR_SMOKE_MODEL=${override} is not a Grok 4.6 id`, `use one of: ${grok46Ids.join(", ")}`);
+  }
   const candidateIds = override
     ? [override]
-    : [
-        ...DEFAULT_MODEL_PREFERENCE,
-        ...processed
-          .map((m) => m.id)
-          .filter((id) => GROK_46_ID.test(id) && !/-(fast|max)(-|$)/.test(id)),
-      ];
-  const model = candidateIds.map((id) => byId.get(id)).find(Boolean);
+    : [...DEFAULT_MODEL_PREFERENCE, ...grok46Ids.filter((id) => !/-(fast|max)(-|$)/.test(id))];
+  const byId = new Map(processed.map((m) => [m.id, m]));
+  const model = candidateIds.map((id) => byId.get(id)).find((m) => m !== undefined);
   if (!model) {
-    const grokIds = processed.map((m) => m.id).filter((id) => /grok/i.test(id));
     fail(
       "model",
       override
         ? `CURSOR_SMOKE_MODEL=${override} is not in the provider's registered catalog`
         : "no Grok 4.6 model id registered by this provider",
-      `grok ids available: ${grokIds.join(", ") || "(none)"}`,
+      `grok 4.6 ids available: ${grok46Ids.join(", ") || "(none)"}`,
     );
   }
 
-  const thinking = process.env.CURSOR_SMOKE_THINKING?.trim() || DEFAULT_THINKING;
+  const thinking = (process.env.CURSOR_SMOKE_THINKING?.trim() || DEFAULT_THINKING) as PiThinkingLevel;
   const cursorEffort = model.effortMap?.[thinking];
   if (model.supportsEffort && !cursorEffort) {
     const allowed = Object.entries(model.effortMap ?? {})
@@ -105,27 +135,25 @@ async function pickGrokModel(accessToken) {
       `allowed: ${allowed.join(", ")}`,
     );
   }
-  const rawVariant = model.supportsEffort
-    ? model.rawModelByEffort?.[cursorEffort] ?? model.id
-    : model.id;
+  const rawVariant = cursorEffort ? (model.rawModelByEffort?.[cursorEffort] ?? model.id) : model.id;
   log("model", `id=${model.id} name="${model.name}" thinking=${thinking} -> cursor=${rawVariant}`);
-  return { model, thinking, rawVariant };
+  return { model, thinking };
 }
 
-function run(cmd, args, options = {}) {
+function run(cmd: string, args: string[], timeoutMs?: number): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], ...options });
+    const child = spawn(cmd, args, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
-    const timer = options.timeoutMs
+    const timer = timeoutMs
       ? setTimeout(() => {
           timedOut = true;
           child.kill("SIGKILL");
-        }, options.timeoutMs)
+        }, timeoutMs)
       : undefined;
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
+    child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+    child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
     child.on("error", (error) => {
       clearTimeout(timer);
       resolve({ code: -1, stdout, stderr: `${stderr}\n${error.message}`, timedOut });
@@ -137,14 +165,14 @@ function run(cmd, args, options = {}) {
   });
 }
 
-async function buildDist() {
+async function buildDist(): Promise<void> {
   const result = await run(process.execPath, ["run", "build"]);
   if (result.code !== 0) fail("build", "bun run build failed", result.stderr || result.stdout);
   if (!existsSync(DIST_ENTRY)) fail("build", `${DIST_ENTRY} missing after build`);
   log("build", "dist/index.js ready");
 }
 
-function locatePi() {
+function locatePi(): string {
   const explicit = process.env.PI_BIN?.trim();
   if (explicit) return explicit;
   const onPath = Bun.which("pi");
@@ -157,14 +185,14 @@ function locatePi() {
   );
 }
 
-function parseJsonLines(stdout) {
-  const events = [];
-  const nonJson = [];
+function parseJsonLines(stdout: string): { events: PiEvent[]; nonJson: string[] } {
+  const events: PiEvent[] = [];
+  const nonJson: string[] = [];
   for (const line of stdout.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      events.push(JSON.parse(trimmed));
+      events.push(JSON.parse(trimmed) as PiEvent);
     } catch {
       nonJson.push(trimmed);
     }
@@ -172,11 +200,11 @@ function parseJsonLines(stdout) {
   return { events, nonJson };
 }
 
-function summarizeAssistant(events) {
+function summarizeAssistant(events: PiEvent[]) {
   let deltaCount = 0;
   let streamed = "";
-  const errorEvents = [];
-  let finalMessage;
+  const errorEvents: unknown[] = [];
+  let finalMessage: PiAssistantMessage | undefined;
 
   for (const event of events) {
     if (event.type === "message_update") {
@@ -194,14 +222,14 @@ function summarizeAssistant(events) {
   }
 
   const finalText = (finalMessage?.content ?? [])
-    .filter((part) => part?.type === "text" && typeof part.text === "string")
+    .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text)
     .join("");
 
   return { deltaCount, streamed, finalText, finalMessage, errorEvents };
 }
 
-async function runPi({ model, thinking }) {
+async function runPi({ model, thinking }: Selection): Promise<void> {
   const piBin = locatePi();
   const version = await run(piBin, ["--version"]);
   log("pi", `bin=${piBin} version=${(version.stdout || version.stderr).trim() || "unknown"}`);
@@ -233,7 +261,7 @@ async function runPi({ model, thinking }) {
   log("pi", `prompt="${prompt}" timeout=${timeoutMs}ms`);
 
   const startedAt = Date.now();
-  const result = await run(piBin, args, { timeoutMs });
+  const result = await run(piBin, args, timeoutMs);
   const elapsedMs = Date.now() - startedAt;
 
   if (result.timedOut) fail("pi", `no completion within ${timeoutMs}ms`, result.stderr);
