@@ -98,6 +98,7 @@ Reasoning effort (`off` … `max`) maps to Cursor's model variants. Restrict the
 ```bash
 bun install
 bun run check
+bun run smoke:pi-grok   # live: pi + this provider + Grok 4.6 (needs a Cursor login)
 ```
 
 Architecture, module layout, and the full environment variable list live in [AGENTS.md](AGENTS.md).
