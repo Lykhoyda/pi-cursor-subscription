@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.2
+
+### Patch Changes
+
+- [#14](https://github.com/Lykhoyda/pi-cursor-subscription/pull/14) [`3bf64a9`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/3bf64a90698f39a3ba33fe9351cb5cf433fb4bd6) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Reject Cursor-hosted web search, Exa search/fetch, and unnamed web-fetch prompts unless `PI_CURSOR_HOSTED_WEB=1`.
+
+- [#18](https://github.com/Lykhoyda/pi-cursor-subscription/pull/18) [`9bb490d`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/9bb490dce6f3bf971f504ed33823473c2bf70af7) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Native `fetch` (only reachable with `PI_CURSOR_NATIVE_EXEC=1`) now refuses IANA special-purpose addresses (loopback, RFC1918, CGNAT, link-local / cloud-metadata, TEST-NETs, benchmarking, 6to4 / NAT64 embeds, IPv6 ULA), connects to the address that passed the check instead of resolving DNS a second time, and re-checks every redirect hop (301/302/303/307/308) instead of following it blindly.
+
+- [#19](https://github.com/Lykhoyda/pi-cursor-subscription/pull/19) [`5a53127`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/5a53127c425415f98dd84d984d85a8adb6e94c70) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Harden the opt-in native shell (`PI_CURSOR_NATIVE_EXEC=1`): strip secret-named env vars (`CURSOR_ACCESS_TOKEN` etc.) from the child, zero them in Pi's own exec-time environment block so `/proc/$PPID/environ` / `ps -E` cannot recover them, and SIGKILL the whole process group on timeout instead of SIGTERM-ing only `sh`.
+
 ## 1.5.1
 
 ### Patch Changes
