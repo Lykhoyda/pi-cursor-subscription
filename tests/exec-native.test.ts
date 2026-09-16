@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   dispatchNativeExec,
   emptyGrepPatternRejection,
+  fetchPublic,
+  type PinnedRequest,
+  type PinnedResponse,
+  requestPinned,
   resolveInWorkspace,
 } from "../src/stream/exec-native.js";
 import { rotateConversationAfterRateLimit } from "../src/stream/session-state.js";
@@ -113,6 +119,121 @@ describe("native exec handlers", () => {
     expect(
       (frame.value as { result: { value: { stdout?: string } } }).result.value.stdout,
     ).toContain("native-shell");
+  });
+});
+
+describe("native fetch refuses private and internal targets", () => {
+  let calls: string[];
+
+  function fakeRequest(respond: (url: string) => Partial<PinnedResponse>): PinnedRequest {
+    calls = [];
+    return (url, address) => {
+      calls.push(`${url.href} @ ${address}`);
+      return Promise.resolve({ status: 200, headers: {}, body: Buffer.from(""), ...respond(url.href) });
+    };
+  }
+
+  it.each([
+    "http://127.0.0.1:8080/",
+    "http://[::1]/",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://10.0.0.1/",
+    "http://172.16.5.5/",
+    "http://192.168.1.1/",
+    "http://100.64.0.1/",
+    "http://0.0.0.0/",
+    "http://192.0.0.1/",
+    "http://192.0.2.1/",
+    "http://198.18.0.1/",
+    "http://198.51.100.1/",
+    "http://203.0.113.1/",
+    "http://[fd00::1]/",
+    "http://[fe80::1]/",
+    "http://[64:ff9b::a00:1]/",
+    "http://[2001:db8::1]/",
+    "http://[2002:a00:1::]/",
+    "http://[::ffff:127.0.0.1]/",
+    "http://2130706433/",
+    "http://localhost/",
+  ])("denies %s without connecting", async (url) => {
+    const request = fakeRequest(() => ({ body: Buffer.from("leak") }));
+    await expect(fetchPublic(new URL(url), request)).rejects.toThrow("private or internal");
+    expect(calls).toEqual([]);
+  });
+
+  it("denies on the exec channel too", async () => {
+    const dispatched = dispatchNativeExec("fetchArgs", { url: "http://169.254.169.254/" });
+    if (dispatched?.kind !== "async") throw new Error("fetchArgs should dispatch async");
+    const frame = await dispatched.run();
+    const result = (frame.value as { result: { case: string; value: { error?: string } } }).result;
+    expect(result.case).toBe("error");
+    expect(result.value.error).toContain("private or internal");
+  });
+
+  it("re-checks redirect hops instead of following them into the LAN", async () => {
+    const request = fakeRequest(() => ({ status: 302, headers: { location: "http://127.0.0.1/" } }));
+    await expect(fetchPublic(new URL("http://93.184.216.34/"), request)).rejects.toThrow(
+      "private or internal",
+    );
+    expect(calls).toEqual(["http://93.184.216.34/ @ 93.184.216.34"]);
+  });
+
+  it("refuses non-http redirect targets", async () => {
+    const request = fakeRequest(() => ({ status: 302, headers: { location: "file:///etc/passwd" } }));
+    await expect(fetchPublic(new URL("http://93.184.216.34/"), request)).rejects.toThrow(
+      "Only http and https",
+    );
+  });
+
+  it("follows only real redirect statuses", async () => {
+    const request = fakeRequest(() => ({
+      status: 300,
+      headers: { location: "http://127.0.0.1/" },
+      body: Buffer.from("choices"),
+    }));
+    const response = await fetchPublic(new URL("http://93.184.216.34/"), request);
+    expect(response.status).toBe(300);
+    expect(response.body.toString()).toBe("choices");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("still fetches public hosts and follows public redirects to the checked address", async () => {
+    const request = fakeRequest((url) =>
+      url === "http://93.184.216.34/"
+        ? { status: 301, headers: { location: "https://[2606:2800:21f:cb07:6820:80da:af6b:8b2c]/x" } }
+        : { body: Buffer.from("public body") },
+    );
+    const response = await fetchPublic(new URL("http://93.184.216.34/"), request);
+    expect(response.body.toString()).toBe("public body");
+    expect(calls).toEqual([
+      "http://93.184.216.34/ @ 93.184.216.34",
+      "https://[2606:2800:21f:cb07:6820:80da:af6b:8b2c]/x @ 2606:2800:21f:cb07:6820:80da:af6b:8b2c",
+    ]);
+  });
+
+  it("connects to the pinned address and keeps the URL host on the wire", async () => {
+    const seen: { host?: string; url?: string } = {};
+    const server = createServer((req, res) => {
+      seen.host = req.headers.host;
+      seen.url = req.url;
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("pinned body");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const response = await requestPinned(
+        new URL(`http://pinned.invalid:${port}/path?q=1`),
+        "127.0.0.1",
+        AbortSignal.timeout(5000),
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toBe("text/plain");
+      expect(response.body.toString()).toBe("pinned body");
+      expect(seen).toEqual({ host: `pinned.invalid:${port}`, url: "/path?q=1" });
+    } finally {
+      server.close();
+    }
   });
 });
 

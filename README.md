@@ -54,6 +54,8 @@ Restore upstream 1.4.31+ behaviour only if you accept that risk:
 export PI_CURSOR_NATIVE_EXEC=1
 ```
 
+With the flag on, native `fetch` still refuses loopback, private-network, link-local / cloud-metadata, and other internal addresses, including via redirects.
+
 Cursor-hosted web search / Exa fetch permission prompts are also **rejected** unless you opt in (`PI_CURSOR_HOSTED_WEB=1`). That flag is independent of native exec.
 
 See [SECURITY.md](SECURITY.md) for credential handling and URL allowlisting.
