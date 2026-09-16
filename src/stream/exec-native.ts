@@ -20,6 +20,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { type IncomingHttpHeaders, type IncomingMessage, request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { BlockList, isIP } from "node:net";
 import path from "node:path";
 
@@ -96,7 +98,14 @@ const SHELL_TIMEOUT_MS = 30_000;
 const FETCH_TIMEOUT_MS = 20_000;
 const MAX_FETCH_REDIRECTS = 5;
 
-/** Loopback, RFC1918, CGNAT, link-local (incl. cloud metadata), unspecified, multicast, reserved, ULA. */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * IANA special-purpose address space (RFC 6890 registries) plus multicast:
+ * loopback, RFC1918, CGNAT, link-local (incl. cloud metadata), unspecified,
+ * TEST-NETs, benchmarking, IETF assignments, 6to4 / NAT64 embeds, ULA, discard.
+ * IPv4-mapped IPv6 (`::ffff:a.b.c.d`) is matched against the IPv4 rules by BlockList.
+ */
 const PRIVATE_NETS = new BlockList();
 for (const [addr, prefix, family] of [
   ["0.0.0.0", 8, "ipv4"],
@@ -105,11 +114,23 @@ for (const [addr, prefix, family] of [
   ["127.0.0.0", 8, "ipv4"],
   ["169.254.0.0", 16, "ipv4"],
   ["172.16.0.0", 12, "ipv4"],
+  ["192.0.0.0", 24, "ipv4"],
+  ["192.0.2.0", 24, "ipv4"],
+  ["192.88.99.0", 24, "ipv4"],
   ["192.168.0.0", 16, "ipv4"],
+  ["198.18.0.0", 15, "ipv4"],
+  ["198.51.100.0", 24, "ipv4"],
+  ["203.0.113.0", 24, "ipv4"],
   ["224.0.0.0", 4, "ipv4"],
   ["240.0.0.0", 4, "ipv4"],
   ["::", 128, "ipv6"],
   ["::1", 128, "ipv6"],
+  ["64:ff9b::", 96, "ipv6"],
+  ["64:ff9b:1::", 48, "ipv6"],
+  ["100::", 64, "ipv6"],
+  ["2001::", 23, "ipv6"],
+  ["2001:db8::", 32, "ipv6"],
+  ["2002::", 16, "ipv6"],
   ["fc00::", 7, "ipv6"],
   ["fe80::", 10, "ipv6"],
   ["ff00::", 8, "ipv6"],
@@ -800,9 +821,8 @@ async function execFetch(args: Record<string, unknown>): Promise<NativeExecFrame
   }
   try {
     const response = await fetchPublic(parsed);
-    const buf = Buffer.from(await response.arrayBuffer());
-    const truncated = buf.byteLength > MAX_FETCH_BYTES;
-    const content = buf.subarray(0, MAX_FETCH_BYTES).toString("utf8");
+    const truncated = response.body.byteLength > MAX_FETCH_BYTES;
+    const content = response.body.subarray(0, MAX_FETCH_BYTES).toString("utf8");
     return {
       resultCase: "fetchResult",
       value: create(FetchResultSchema, {
@@ -812,7 +832,7 @@ async function execFetch(args: Record<string, unknown>): Promise<NativeExecFrame
             url,
             content: truncated ? `${content}\n\n[truncated]` : content,
             statusCode: response.status,
-            contentType: response.headers.get("content-type") ?? "",
+            contentType: response.headers["content-type"] ?? "",
           }),
         },
       }),
@@ -822,29 +842,38 @@ async function execFetch(args: Record<string, unknown>): Promise<NativeExecFrame
   }
 }
 
+export interface PinnedResponse {
+  status: number;
+  headers: IncomingHttpHeaders;
+  body: Buffer;
+}
+
+export type PinnedRequest = (url: URL, address: string, signal: AbortSignal) => Promise<PinnedResponse>;
+
 /**
  * Follows redirects by hand so every hop is re-checked against the scheme and
  * private-address rules; a public URL must not be able to bounce into the LAN.
+ * The address that passed the check is the one the socket connects to.
  */
-async function fetchPublic(url: URL): Promise<Response> {
+export async function fetchPublic(
+  url: URL,
+  request: PinnedRequest = requestPinned,
+): Promise<PinnedResponse> {
   const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   let target = url;
   for (let hop = 0; hop <= MAX_FETCH_REDIRECTS; hop++) {
     if (target.protocol !== "http:" && target.protocol !== "https:") {
       throw new Error("Only http and https URLs can be fetched");
     }
-    await assertPublicHost(target);
-    const response = await fetch(target, { redirect: "manual", signal });
-    const location = response.headers.get("location");
-    if (response.status < 300 || response.status > 399 || !location) return response;
+    const response = await request(target, await resolvePublicAddress(target), signal);
+    const location = response.headers.location;
+    if (!REDIRECT_STATUSES.has(response.status) || !location) return response;
     target = new URL(location, target);
   }
   throw new Error(`Too many redirects (max ${MAX_FETCH_REDIRECTS})`);
 }
 
-// ponytail: resolve-then-fetch leaves a DNS-rebinding window; pin the connect
-// address via a custom dispatcher if native fetch ever ships default-on.
-async function assertPublicHost(url: URL): Promise<void> {
+async function resolvePublicAddress(url: URL): Promise<string> {
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(host)
     ? [host]
@@ -855,6 +884,44 @@ async function assertPublicHost(url: URL): Promise<void> {
   if (blocked || addresses.length === 0) {
     throw new Error(`Refusing to fetch private or internal address for host ${url.hostname}`);
   }
+  return addresses[0];
+}
+
+/**
+ * Connects to `address` (no second DNS lookup) while keeping the URL's host for
+ * the Host header, SNI, and certificate identity, so a rebinding name cannot
+ * swap in an internal address between the check and the connect.
+ */
+export async function requestPinned(
+  url: URL,
+  address: string,
+  signal: AbortSignal,
+): Promise<PinnedResponse> {
+  const secure = url.protocol === "https:";
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  const response = await new Promise<IncomingMessage>((resolve, reject) => {
+    (secure ? httpsRequest : httpRequest)(
+      {
+        host: address,
+        port: url.port || (secure ? 443 : 80),
+        path: `${url.pathname}${url.search}`,
+        servername: secure && !isIP(hostname) ? hostname : undefined,
+        headers: { host: url.host },
+        signal,
+      },
+      resolve,
+    )
+      .on("error", reject)
+      .end();
+  });
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of response as AsyncIterable<Buffer>) {
+    chunks.push(chunk);
+    size += chunk.length;
+    if (size > MAX_FETCH_BYTES) break;
+  }
+  return { status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks) };
 }
 
 function fetchError(url: string, error: string): NativeExecFrame {
