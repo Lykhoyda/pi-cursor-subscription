@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -140,6 +141,23 @@ describe("native exec handlers", () => {
       else process.env.CURSOR_ACCESS_TOKEN = prevToken;
     }
   });
+
+  it.skipIf(process.platform !== "linux")(
+    "scrubs secrets from the parent's /proc environ before the shell runs",
+    () => {
+      const modulePath = path.resolve(import.meta.dir, "../src/stream/exec-native.ts");
+      const script = `
+        const { runShellCommand } = await import(${JSON.stringify(modulePath)});
+        const r = await runShellCommand("tr '\\\\0' '\\\\n' < /proc/$PPID/environ | grep -c leak-me-not; true", process.cwd(), 5000);
+        console.log(JSON.stringify({ seenByShell: r.stdout.trim(), ownEnv: process.env.CURSOR_ACCESS_TOKEN }));
+      `;
+      const out = spawnSync(process.execPath, ["-e", script], {
+        env: { ...process.env, CURSOR_ACCESS_TOKEN: "leak-me-not" },
+        encoding: "utf8",
+      });
+      expect(JSON.parse(out.stdout.trim())).toEqual({ seenByShell: "0", ownEnv: "leak-me-not" });
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "hard-kills the whole process group on timeout",
