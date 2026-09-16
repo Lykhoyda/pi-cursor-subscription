@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -13,6 +14,8 @@ import {
   type PinnedResponse,
   requestPinned,
   resolveInWorkspace,
+  runShellCommand,
+  shellEnv,
 } from "../src/stream/exec-native.js";
 import { rotateConversationAfterRateLimit } from "../src/stream/session-state.js";
 import type { StoredConversation } from "../src/stream/types.js";
@@ -120,6 +123,52 @@ describe("native exec handlers", () => {
       (frame.value as { result: { value: { stdout?: string } } }).result.value.stdout,
     ).toContain("native-shell");
   });
+
+  it("does not pass secret-looking env vars to the shell", async () => {
+    expect(Object.keys(shellEnv({ CURSOR_ACCESS_TOKEN: "x", PATH: "/bin", HOME: "/h" }))).toEqual([
+      "PATH",
+      "HOME",
+    ]);
+    dir = mkdtempSync(path.join(tmpdir(), "pi-cursor-exec-"));
+    const prevToken = process.env.CURSOR_ACCESS_TOKEN;
+    process.env.CURSOR_ACCESS_TOKEN = "leak-me-not";
+    try {
+      const result = await runShellCommand('echo "[${CURSOR_ACCESS_TOKEN:-unset}]"', dir, 5_000);
+      expect(result.stdout).toContain("[unset]");
+      expect(result.stdout).not.toContain("leak-me-not");
+    } finally {
+      if (prevToken === undefined) delete process.env.CURSOR_ACCESS_TOKEN;
+      else process.env.CURSOR_ACCESS_TOKEN = prevToken;
+    }
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "scrubs secrets from the parent's /proc environ before the shell runs",
+    () => {
+      const modulePath = path.resolve(import.meta.dir, "../src/stream/exec-native.ts");
+      const script = `
+        const { runShellCommand } = await import(${JSON.stringify(modulePath)});
+        const r = await runShellCommand("tr '\\\\0' '\\\\n' < /proc/$PPID/environ | grep -c leak-me-not; true", process.cwd(), 5000);
+        console.log(JSON.stringify({ seenByShell: r.stdout.trim(), ownEnv: process.env.CURSOR_ACCESS_TOKEN }));
+      `;
+      const out = spawnSync(process.execPath, ["-e", script], {
+        env: { ...process.env, CURSOR_ACCESS_TOKEN: "leak-me-not" },
+        encoding: "utf8",
+      });
+      expect(JSON.parse(out.stdout.trim())).toEqual({ seenByShell: "0", ownEnv: "leak-me-not" });
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "hard-kills the whole process group on timeout",
+    async () => {
+      dir = mkdtempSync(path.join(tmpdir(), "pi-cursor-exec-"));
+      const started = Date.now();
+      const result = await runShellCommand("trap '' TERM; sleep 30 & wait", dir, 300);
+      expect(result.timedOut).toBe(true);
+      expect(Date.now() - started).toBeLessThan(10_000);
+    },
+  );
 });
 
 describe("native fetch refuses private and internal targets", () => {

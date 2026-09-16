@@ -10,15 +10,18 @@
 import { spawn } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import {
+  closeSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   realpathSync,
   statSync,
   unlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { type IncomingHttpHeaders, type IncomingMessage, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -985,7 +988,82 @@ function truncateUtf8(text: string, maxBytes: number): string {
   return `${buf.subarray(0, end).toString("utf8")}\n\n[truncated]`;
 }
 
-function runShellCommand(
+/** Env var names that must not reach a model-controlled shell (covers CURSOR_ACCESS_TOKEN). */
+const SECRET_ENV_KEY = /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY|CREDENTIAL/i;
+
+export function shellEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !SECRET_ENV_KEY.test(key)));
+}
+
+function isSecretEnvEntry(entry: string): boolean {
+  return SECRET_ENV_KEY.test(entry.slice(0, entry.indexOf("=")));
+}
+
+/**
+ * A same-user child can read this process's exec-time environment block
+ * (`/proc/$PPID/environ` on Linux, `ps -E` on macOS), so filtering the child's
+ * env is not enough. Zero secret-named entries in place. Bun snapshots `process.env`
+ * at startup, so the auth path still sees CURSOR_ACCESS_TOKEN afterwards.
+ * ponytail: best effort — Windows (PEB) is not scrubbed; the "run in a VM" note covers it.
+ */
+let envBlockScrubbed = false;
+export async function scrubSecretsFromEnvBlock(): Promise<void> {
+  if (envBlockScrubbed) return;
+  envBlockScrubbed = true;
+  try {
+    if (process.platform === "linux") scrubLinuxEnvBlock();
+    else if (process.platform === "darwin") await scrubDarwinEnvBlock();
+  } catch {}
+}
+
+function scrubLinuxEnvBlock(): void {
+  // /proc/self/environ is exactly [env_start, env_end) — field 50 of /proc/self/stat.
+  const stat = readFileSync("/proc/self/stat", "latin1");
+  const envStart = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[47]);
+  if (!envStart) return;
+  const block = readFileSync("/proc/self/environ", "latin1");
+  const mem = openSync("/proc/self/mem", "r+");
+  try {
+    let offset = 0;
+    for (const entry of block.split("\0")) {
+      if (isSecretEnvEntry(entry)) {
+        writeSync(mem, Buffer.alloc(entry.length), 0, entry.length, envStart + offset);
+      }
+      offset += entry.length + 1;
+    }
+  } finally {
+    closeSync(mem);
+  }
+}
+
+async function scrubDarwinEnvBlock(): Promise<void> {
+  const { CString, dlopen, read, toArrayBuffer } = await import("bun:ffi");
+  const libc = dlopen("/usr/lib/libSystem.B.dylib", {
+    _NSGetEnviron: { args: [], returns: "ptr" },
+  });
+  try {
+    const environ = read.ptr(libc.symbols._NSGetEnviron()!);
+    for (let i = 0; ; i++) {
+      const entryPtr = read.ptr(environ, i * 8);
+      if (!entryPtr) break;
+      if (!isSecretEnvEntry(new CString(entryPtr).toString())) continue;
+      let length = 0;
+      while (read.u8(entryPtr, length) !== 0) length++;
+      new Uint8Array(toArrayBuffer(entryPtr, 0, length)).fill(0);
+    }
+  } finally {
+    libc.close();
+  }
+}
+
+/**
+ * The command itself is not confined — only its starting cwd is workspace-checked
+ * (`cd /` works). Env is scrubbed of secret-looking names (child copy and this
+ * process's inspectable block) and the timeout SIGKILLs the whole process group so
+ * `trap '' TERM` or a backgrounded grandchild cannot outlive it or hold the stdout
+ * pipe open.
+ */
+export async function runShellCommand(
   command: string,
   cwd: string,
   timeoutMs: number,
@@ -996,6 +1074,7 @@ function runShellCommand(
   signal: string;
   timedOut: boolean;
 }> {
+  await scrubSecretsFromEnvBlock();
   return new Promise((resolve) => {
     const isWin = process.platform === "win32";
     const child = spawn(
@@ -1003,8 +1082,9 @@ function runShellCommand(
       isWin ? ["/d", "/s", "/c", command] : ["-c", command],
       {
         cwd,
-        env: process.env,
+        env: shellEnv(),
         windowsHide: true,
+        detached: !isWin,
       },
     );
     let stdout = "";
@@ -1012,7 +1092,16 @@ function runShellCommand(
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
+      // ponytail: Windows kills cmd.exe only; use taskkill /T if orphaned children matter there.
+      if (isWin || child.pid === undefined) {
+        child.kill();
+        return;
+      }
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
     }, timeoutMs);
     timer.unref?.();
     child.stdout?.on("data", (chunk: Buffer) => {

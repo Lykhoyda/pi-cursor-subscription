@@ -35,6 +35,8 @@ export PI_CURSOR_NATIVE_EXEC=1
 
 Even with the flag on, native `fetch` only allows `http`/`https` to public addresses: IANA special-purpose ranges (loopback, RFC1918, CGNAT, link-local / cloud metadata, TEST-NETs, benchmarking, 6to4 / NAT64 embeds, IPv6 ULA) are refused. The socket connects to the address that passed the check (SNI and Host keep the URL's name), and every redirect hop is re-checked.
 
+With the flag on, native `shell` is **not sandboxed**: only the starting cwd is workspace-checked; the command can `cd` anywhere your user can. The child environment is `process.env` minus any variable whose name contains `TOKEN`, `SECRET`, `PASSWORD`/`PASSWD`, `API_KEY`, `PRIVATE_KEY`, or `CREDENTIAL` (so `CURSOR_ACCESS_TOKEN` never reaches a model-controlled shell), and the 30s timeout SIGKILLs the process group. Because a same-user child can also read the Pi process's own exec-time environment (`/proc/$PPID/environ` on Linux, `ps -E` on macOS), those entries are zeroed in Pi's memory before the first native shell runs; Windows is not scrubbed. The shell can still read anything else your user can (`~/.pi/agent/auth.json` included), so run Pi inside a container or VM if you opt in.
+
 ### Hosted web / Exa fetch
 
 By default this fork **rejects** Cursor-hosted web search, Exa search, Exa fetch, and unnamed web-fetch permission prompts. Those turns should use Pi MCP tools (with Pi's confirmation UI) instead. This is independent of `PI_CURSOR_NATIVE_EXEC`.
