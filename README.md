@@ -1,6 +1,6 @@
 # @lykhoyda/pi-cursor-subscription
 
-Use your **Cursor** subscription models (Composer, Claude, GPT, Grok, and others) inside the [**Pi Coding Agent**](https://github.com/earendil-works/pi-coding-agent). This package registers a `cursor` provider that talks to Cursor's agent backend over HTTP/2 (Connect + Protobuf). No separate API key and no Cursor CLI subprocess per turn.
+Use your **Cursor** subscription models inside the [**Pi Coding Agent**](https://github.com/earendil-works/pi-coding-agent). **Grok 4.6** (Cursor Grok / `grok-4.6`) is recommended; Claude, GPT, Composer, Gemini, and others still work. This package registers a `cursor` provider that talks to Cursor's agent backend over HTTP/2 (Connect + Protobuf). No separate API key and no Cursor CLI subprocess per turn.
 
 Fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) **1.5.0** (based on upstream 1.4.34). Version bumps go through [Changesets](https://changesets.dev/); a matching `v*` tag publishes `@lykhoyda/pi-cursor-subscription` to npm.
 
@@ -34,10 +34,10 @@ pi update git:github.com/Lykhoyda/pi-cursor-subscription
    /login cursor
    ```
 
-2. **Choose a model** (examples; your account may differ):
+2. **Choose a model** — recommended: **Grok 4.6**. Claude, GPT, Composer, Gemini, and others still work (your account may differ):
 
    ```text
-   /model cursor/composer-2.5
+   /model cursor/grok-4.6
    ```
 
    Run `/cursor.models` for the live catalog.
