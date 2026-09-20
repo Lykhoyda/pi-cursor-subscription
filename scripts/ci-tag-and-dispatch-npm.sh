@@ -50,7 +50,7 @@ dispatch_ok=0
 for attempt in 1 2 3 4 5 6 7 8; do
   if gh workflow run publish.yml \
     --repo "$GITHUB_REPOSITORY" \
-    --field "tag=${TAG}"; then
+    --raw-field "tag=${TAG}"; then
     dispatch_ok=1
     break
   fi

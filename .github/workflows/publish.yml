@@ -1,9 +1,22 @@
 name: Publish Package to npm
 
+# npm trusted publisher is this filename. Keep npm publish here — not in
+# release.yml. Tag pushes still work for a human-created tag; Version Packages
+# merges dispatch this workflow because GITHUB_TOKEN tag pushes do not.
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Git tag to publish (vX.Y.Z)
+        required: true
+        type: string
+
+concurrency:
+  group: npm-publish-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -13,9 +26,27 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          DISPATCH_TAG: ${{ github.event.inputs.tag || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$DISPATCH_TAG" ]; then
+            TAG="$DISPATCH_TAG"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to publish from tag ${TAG}"
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ steps.tag.outputs.tag }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -30,11 +61,13 @@ jobs:
       - run: bun run check
 
       - name: Publish to npm (skip if version already exists)
+        env:
+          PUBLISH_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
           NAME="$(bun --print "require('./package.json').name")"
           VERSION="$(bun --print "require('./package.json').version")"
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${PUBLISH_TAG#v}"
 
           if [ "$TAG" != "$VERSION" ]; then
             echo "::error::tag v$TAG != package.json $VERSION"
