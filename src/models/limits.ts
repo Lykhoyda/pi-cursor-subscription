@@ -47,12 +47,14 @@ export function inferCursorContextWindow(id: string, name: string): number {
   }
 
   if (/\b1\s*m\b|(?:^|-)1m(?:-|$)/.test(text)) return 1_000_000;
+  if (/\b500\s*k\b|(?:^|-)500k(?:-|$)/.test(text)) return 500_000;
   if (/\b272\s*k\b|(?:^|-)272k(?:-|$)/.test(text)) return 272_000;
   if (/\b256\s*k\b|(?:^|-)256k(?:-|$)/.test(text)) return 256_000;
-  // Cursor Grok 4.5 / 4.6 advertise 256K via contextTokenLimit; the display
-  // name has no "256K" suffix, so GetUsableModels rows would otherwise stay at
-  // the 200K default. Do not match Grok 4.20 (`grok-4-20`).
-  if (/grok[- ]4\.[56](?:\b|-)/.test(text)) return 256_000;
+  // Cursor's non-max Grok 4.5 / 4.6 / 4.7 window is 256K. Display names omit
+  // that suffix, so GetUsableModels rows would otherwise stay at the 200K
+  // default. Grok 4.7 Max Mode is 500K and is named `500k` when present.
+  // Do not match Grok 4.20 (`grok-4-20`).
+  if (/grok[- ]4\.[5-7](?:\b|-)/.test(text)) return 256_000;
   return DEFAULT_CONTEXT_WINDOW;
 }
 

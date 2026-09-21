@@ -1,9 +1,10 @@
 /**
- * Live end-to-end smoke: Pi Coding Agent + this package as the Cursor provider + Grok 4.6.
+ * Live end-to-end smoke: Pi Coding Agent + this package as the Cursor provider + Grok.
  *
  * Proves the whole path a user exercises — `pi` loads `dist/index.js`, the extension
- * registers the `cursor` provider, `--model grok-4.6` resolves to a real Cursor variant,
- * and a trivial prompt streams a non-empty reply back through pi's JSON event stream.
+ * registers the `cursor` provider, `--model` resolves to a real Cursor Grok variant
+ * (4.7 when the account lists it, otherwise 4.6), and a trivial prompt streams a
+ * non-empty reply back through pi's JSON event stream.
  *
  * Usage: bun run smoke:pi-grok
  *
@@ -12,7 +13,7 @@
  * redactSecrets() before it reaches stdout/stderr.
  *
  * Env:
- *   CURSOR_SMOKE_MODEL       collapsed Grok 4.6 model id to test (default: first Grok 4.6 id found)
+ *   CURSOR_SMOKE_MODEL       collapsed Grok 4.7 or 4.6 model id (default: grok-4.7, then grok-4.6)
  *   CURSOR_SMOKE_THINKING    pi thinking level (default: low)
  *   CURSOR_SMOKE_PROMPT      user prompt (default: a one-word pong request)
  *   CURSOR_SMOKE_TIMEOUT_MS  hard kill for the pi process (default: 120000)
@@ -32,8 +33,8 @@ import { redactSecrets } from "../src/utils/security.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST_ENTRY = join(ROOT, "dist", "index.js");
-const DEFAULT_MODEL_PREFERENCE = ["grok-4.6", "cursor-grok-4.6"];
-const GROK_46_ID = /grok-4\.6/;
+const DEFAULT_MODEL_PREFERENCE = ["grok-4.7", "cursor-grok-4.7", "grok-4.6", "cursor-grok-4.6"];
+const GROK_SMOKE_ID = /grok-4\.[67]/;
 const DEFAULT_PROMPT = "Reply with exactly one word: pong";
 const DEFAULT_THINKING: PiThinkingLevel = "low";
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -93,7 +94,7 @@ async function resolveCredentialSource(): Promise<string> {
 
 async function pickGrokModel(accessToken: string): Promise<Selection> {
   // discoverCursorCatalog() also persists the on-disk catalog cache, which is what lets
-  // pi register Grok 4.6 at startup — the bundled fallback catalog has no Grok 4.6 row.
+  // pi register Grok at startup — the bundled fallback catalog has no Grok 4.7 row.
   const catalog = await discoverCursorCatalog(accessToken);
   const processed = processModels(
     augmentCursorModels(catalog.rawModels, catalog.parameterizedModels),
@@ -103,14 +104,18 @@ async function pickGrokModel(accessToken: string): Promise<Selection> {
     `raw=${catalog.rawModels.length} parameterized=${catalog.parameterizedModels.length} registered=${processed.length}`,
   );
 
-  const grok46Ids = processed.map((m) => m.id).filter((id) => GROK_46_ID.test(id));
+  const grokIds = processed.map((m) => m.id).filter((id) => GROK_SMOKE_ID.test(id));
   const override = process.env.CURSOR_SMOKE_MODEL?.trim();
-  if (override && !GROK_46_ID.test(override)) {
-    fail("model", `CURSOR_SMOKE_MODEL=${override} is not a Grok 4.6 id`, `use one of: ${grok46Ids.join(", ")}`);
+  if (override && !GROK_SMOKE_ID.test(override)) {
+    fail(
+      "model",
+      `CURSOR_SMOKE_MODEL=${override} is not a Grok 4.7 or 4.6 id`,
+      `use one of: ${grokIds.join(", ")}`,
+    );
   }
   const candidateIds = override
     ? [override]
-    : [...DEFAULT_MODEL_PREFERENCE, ...grok46Ids.filter((id) => !/-(fast|max)(-|$)/.test(id))];
+    : [...DEFAULT_MODEL_PREFERENCE, ...grokIds.filter((id) => !/-(fast|max)(-|$)/.test(id))];
   const byId = new Map(processed.map((m) => [m.id, m]));
   const model = candidateIds.map((id) => byId.get(id)).find((m) => m !== undefined);
   if (!model) {
@@ -118,8 +123,8 @@ async function pickGrokModel(accessToken: string): Promise<Selection> {
       "model",
       override
         ? `CURSOR_SMOKE_MODEL=${override} is not in the provider's registered catalog`
-        : "no Grok 4.6 model id registered by this provider",
-      `grok 4.6 ids available: ${grok46Ids.join(", ") || "(none)"}`,
+        : "no Grok 4.7 or 4.6 model id registered by this provider",
+      `grok ids available: ${grokIds.join(", ") || "(none)"}`,
     );
   }
 
