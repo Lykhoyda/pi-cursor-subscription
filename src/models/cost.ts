@@ -76,7 +76,13 @@ export const MODEL_COST_PATTERNS: Array<{ match: (id: string) => boolean; cost: 
     cost: MODEL_COST_TABLE["gemini-2.5-flash"] ?? DEFAULT_COST,
   },
   { match: (id) => /gemini/i.test(id), cost: MODEL_COST_TABLE["gemini-3-pro"] ?? DEFAULT_COST },
-  { match: (id) => /grok/i.test(id), cost: MODEL_COST_TABLE["grok-4.7"] ?? DEFAULT_COST },
+  // Only 4.7 uses the new cache rate. Older Grok ids, including `grok-4-20`,
+  // keep the previous fallback so this row does not reprice them.
+  {
+    match: (id) => /grok-4\.7(?:\b|-)/i.test(id),
+    cost: MODEL_COST_TABLE["grok-4.7"] ?? DEFAULT_COST,
+  },
+  { match: (id) => /grok/i.test(id), cost: MODEL_COST_TABLE["grok-4.20"] ?? DEFAULT_COST },
   { match: (id) => /kimi/i.test(id), cost: MODEL_COST_TABLE["kimi-k2.5"] ?? DEFAULT_COST },
 ];
 
