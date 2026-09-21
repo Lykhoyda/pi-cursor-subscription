@@ -1,6 +1,8 @@
 name: Release
 
-# Pending changesets → Version PR. npm publish stays on publish.yml (OIDC, v* tags).
+# Pending changesets → Version PR. After that PR merges, tag vX.Y.Z and
+# workflow_dispatch publish.yml (OIDC trusted publisher). Do not npm publish
+# from this file — npm matches the workflow filename on the trusted publisher.
 on:
   push:
     branches: ["main"]
@@ -10,6 +12,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   release:
@@ -27,6 +30,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Create or update the Version Packages PR
+        id: changesets
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           version-script: bun run changeset:version
@@ -34,3 +38,11 @@ jobs:
           pr-title: "chore: version packages"
           create-github-releases: false
           push-git-tags: false
+
+      - name: Tag unpublished version and dispatch npm publish
+        if: steps.changesets.outputs.has-changesets != 'true'
+        # Script still no-ops unless HEAD (or merge second parent) is
+        # "chore: version packages", so ordinary changeset-free pushes skip.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci-tag-and-dispatch-npm.sh

@@ -2,7 +2,7 @@
 
 Use your **Cursor** subscription models inside the [**Pi Coding Agent**](https://github.com/earendil-works/pi-coding-agent). **Grok 4.6** (Cursor Grok / `grok-4.6`) is recommended; Claude, GPT, Composer, Gemini, and others still work. This package registers a `cursor` provider that talks to Cursor's agent backend over HTTP/2 (Connect + Protobuf). No separate API key and no Cursor CLI subprocess per turn.
 
-Fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) **1.5.0** (based on upstream 1.4.34). Version bumps go through [Changesets](https://changesets.dev/); a matching `v*` tag publishes `@lykhoyda/pi-cursor-subscription` to npm.
+Fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) **1.5.0** (based on upstream 1.4.34). Version bumps go through [Changesets](https://changesets.dev/); merging the Version Packages PR publishes `@lykhoyda/pi-cursor-subscription` to npm.
 
 > **Unofficial.** Not affiliated with Cursor / Anysphere. Community reverse-engineered wire details; Cursor can change protocols anytime. Use only on accounts you are allowed to access, and review the source before `/login cursor`.
 

@@ -45,4 +45,4 @@ Do not include credentials, access tokens, refresh tokens, OAuth client secrets,
 
 ## Releases
 
-Pending changesets on `main` open a `chore: version packages` PR. Merge that, then push matching `vX.Y.Z`; `publish.yml` publishes with OIDC. Contributors must not publish the package or modify release credentials.
+Pending changesets on `main` open a `chore: version packages` PR. Merging that PR tags `vX.Y.Z` and dispatches `publish.yml`, which publishes to npm with OIDC (trusted publisher workflow filename must stay `publish.yml`). Other changeset-free pushes to `main` do not publish. Contributors must not publish the package or modify release credentials.
