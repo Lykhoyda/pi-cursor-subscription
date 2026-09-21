@@ -1,6 +1,6 @@
 # @lykhoyda/pi-cursor-subscription
 
-Use your **Cursor** subscription models inside the [**Pi Coding Agent**](https://github.com/earendil-works/pi-coding-agent). **Grok 4.6** (Cursor Grok / `grok-4.6`) is recommended; Claude, GPT, Composer, Gemini, and others still work. This package registers a `cursor` provider that talks to Cursor's agent backend over HTTP/2 (Connect + Protobuf). No separate API key and no Cursor CLI subprocess per turn.
+Use your **Cursor** subscription models inside the [**Pi Coding Agent**](https://github.com/earendil-works/pi-coding-agent). **Grok 4.7** (`grok-4.7`, 256K; `grok-4.7-500k-max` for the 500K Max Mode window) is recommended; Claude, GPT, Composer, Gemini, and others still work. This package registers a `cursor` provider that talks to Cursor's agent backend over HTTP/2 (Connect + Protobuf). No separate API key and no Cursor CLI subprocess per turn.
 
 Fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) **1.5.0** (based on upstream 1.4.34). Version bumps go through [Changesets](https://changesets.dev/); merging the Version Packages PR publishes `@lykhoyda/pi-cursor-subscription` to npm.
 
@@ -34,10 +34,10 @@ pi update git:github.com/Lykhoyda/pi-cursor-subscription
    /login cursor
    ```
 
-2. **Choose a model** — recommended: **Grok 4.6**. Claude, GPT, Composer, Gemini, and others still work (your account may differ):
+2. **Choose a model** — recommended: **Grok 4.7**. Claude, GPT, Composer, Gemini, and others still work (your account may differ):
 
    ```text
-   /model cursor/grok-4.6
+   /model cursor/grok-4.7
    ```
 
    Run `/cursor.models` for the live catalog.
@@ -104,7 +104,7 @@ Reasoning effort (`off` … `max`) maps to Cursor's model variants. Restrict the
 ```bash
 bun install
 bun run check
-bun run smoke:pi-grok   # live: pi + this provider + Grok 4.6 (needs a Cursor login)
+bun run smoke:pi-grok   # live: pi + this provider + Grok 4.7 (falls back to 4.6; needs a Cursor login)
 ```
 
 Architecture, module layout, and the full environment variable list live in [AGENTS.md](AGENTS.md).

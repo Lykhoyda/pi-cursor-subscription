@@ -23,10 +23,12 @@ describe("inferCursorContextWindow", () => {
     expect(inferCursorContextWindow("composer-2", "Composer 2")).toBe(200_000);
   });
 
-  it("treats Cursor Grok 4.5/4.6 as 256K and leaves Grok 4.20 at 200K", () => {
+  it("treats Cursor Grok 4.5/4.6/4.7 as 256K and leaves Grok 4.20 at 200K", () => {
     expect(inferCursorContextWindow("cursor-grok-4.6-high", "Cursor Grok 4.6")).toBe(256_000);
     expect(inferCursorContextWindow("grok-4.6", "Cursor Grok 4.6 Medium")).toBe(256_000);
     expect(inferCursorContextWindow("cursor-grok-4.5-medium", "Cursor Grok 4.5")).toBe(256_000);
+    expect(inferCursorContextWindow("grok-4.7-high", "Grok 4.7 High")).toBe(256_000);
+    expect(inferCursorContextWindow("grok-4.7-500k-max", "Grok 4.7 500K Max")).toBe(500_000);
     expect(inferCursorContextWindow("composer-2", "Composer 2 256K")).toBe(256_000);
     expect(inferCursorContextWindow("grok-4-20", "Grok 4.20")).toBe(200_000);
   });

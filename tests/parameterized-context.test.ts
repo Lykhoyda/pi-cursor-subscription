@@ -65,3 +65,80 @@ describe("augmentCursorModels context overlay", () => {
     expect(augmented.some((model) => model.id.startsWith("grok-4.6"))).toBe(true);
   });
 });
+
+describe("Grok 4.7 parameterized catalog", () => {
+  const efforts = ["low", "medium", "high", "xhigh"] as const;
+  const grok47: CursorParameterizedModel = {
+    name: "grok-4.7",
+    clientDisplayName: "Grok 4.7",
+    supportsImages: false,
+    supportsMaxMode: true,
+    supportsNonMaxMode: true,
+    contextTokenLimit: 500_000,
+    variants: [
+      ...efforts.flatMap((effort) => [
+        {
+          isMaxMode: false,
+          parameters: [
+            { id: "context", value: "256k" },
+            { id: "reasoning_effort", value: effort },
+            { id: "fast", value: "false" },
+          ],
+        },
+        {
+          isMaxMode: true,
+          parameters: [
+            { id: "context", value: "500k" },
+            { id: "reasoning_effort", value: effort },
+            { id: "fast", value: "false" },
+          ],
+        },
+      ]),
+    ],
+  };
+
+  const rawGrok47 = efforts.map((effort) =>
+    raw(`grok-4.7-${effort}`, `Grok 4.7  ${effort === "xhigh" ? "Extra High" : effort}`),
+  );
+
+  it("registers the 256K default and the 500K Max Mode row with reasoning_effort", () => {
+    const processed = processModels(augmentCursorModels(rawGrok47, [grok47]));
+    const standard = processed.find((model) => model.id === "grok-4.7");
+    const extended = processed.find((model) => model.id === "grok-4.7-500k-max");
+
+    expect(standard?.contextWindow).toBe(256_000);
+    expect(standard?.supportsImages).toBe(false);
+    expect(standard?.effortMap).toEqual({
+      off: null,
+      minimal: null,
+      low: "low",
+      medium: "medium",
+      high: "high",
+      xhigh: "xhigh",
+      max: null,
+    });
+    expect(standard?.rawRoutingByEffort?.high).toMatchObject({
+      modelId: "grok-4.7",
+      requestedMaxMode: false,
+      parameters: [
+        { id: "context", value: "256k" },
+        { id: "reasoning_effort", value: "high" },
+        { id: "fast", value: "false" },
+      ],
+    });
+
+    expect(extended?.contextWindow).toBe(500_000);
+    expect(extended?.rawRoutingByEffort?.xhigh).toMatchObject({
+      modelId: "grok-4.7",
+      requestedMaxMode: true,
+      parameters: [
+        { id: "context", value: "500k" },
+        { id: "reasoning_effort", value: "xhigh" },
+        { id: "fast", value: "false" },
+      ],
+    });
+    expect(
+      processed.some((model) => model.id.startsWith("grok-4.7") && model.contextWindow === 200_000),
+    ).toBe(false);
+  });
+});

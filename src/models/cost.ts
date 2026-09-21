@@ -32,6 +32,8 @@ export const MODEL_COST_TABLE: Record<string, ModelCost> = {
   "gpt-5.4-mini": { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
   "gpt-5.5": { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
   "grok-4.20": { input: 2, output: 6, cacheRead: 0.2, cacheWrite: 0 },
+  // xAI standard tier below 200K prompt tokens. Long-context requests bill higher.
+  "grok-4.7": { input: 2, output: 6, cacheRead: 0.5, cacheWrite: 0 },
   "kimi-k2.5": { input: 0.6, output: 3, cacheRead: 0.1, cacheWrite: 0 },
 };
 
@@ -74,7 +76,7 @@ export const MODEL_COST_PATTERNS: Array<{ match: (id: string) => boolean; cost: 
     cost: MODEL_COST_TABLE["gemini-2.5-flash"] ?? DEFAULT_COST,
   },
   { match: (id) => /gemini/i.test(id), cost: MODEL_COST_TABLE["gemini-3-pro"] ?? DEFAULT_COST },
-  { match: (id) => /grok/i.test(id), cost: MODEL_COST_TABLE["grok-4.20"] ?? DEFAULT_COST },
+  { match: (id) => /grok/i.test(id), cost: MODEL_COST_TABLE["grok-4.7"] ?? DEFAULT_COST },
   { match: (id) => /kimi/i.test(id), cost: MODEL_COST_TABLE["kimi-k2.5"] ?? DEFAULT_COST },
 ];
 

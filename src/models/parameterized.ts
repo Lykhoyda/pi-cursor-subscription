@@ -114,17 +114,24 @@ export function cursorEffortLabel(value: string): string {
   );
 }
 
+/** Cursor effort parameter ids. Grok 4.7 and Gemini 3.8 Flash use `reasoning_effort`. */
+export type CursorEffortParameterId = "reasoning" | "effort" | "reasoning_effort";
+
 export function metadataEffortParameterId(
   variant: CursorParameterizedVariant,
-): "reasoning" | "effort" | undefined {
+): CursorEffortParameterId | undefined {
   if (variant.parameters.some((parameter) => parameter.id === "reasoning")) return "reasoning";
   if (variant.parameters.some((parameter) => parameter.id === "effort")) return "effort";
+  if (variant.parameters.some((parameter) => parameter.id === "reasoning_effort"))
+    return "reasoning_effort";
   return undefined;
 }
 
 export function isDefaultContext(context: string | undefined): boolean {
   if (!context) return true;
-  return context === "200k" || context === "272k" || context === "300k";
+  // These are a model's ordinary window, so they stay out of the picker id.
+  // 256K is Grok 4.7's non-max window (Max Mode is the separate `500k` value).
+  return context === "200k" || context === "256k" || context === "272k" || context === "300k";
 }
 
 export function contextIdPart(context: string | undefined): string {
@@ -227,7 +234,7 @@ export function buildParameterizedRowsFromGroup(options: {
   model: CursorParameterizedModel;
   variants: CursorParameterizedVariant[];
   requestedMaxMode: boolean;
-  effortParameterId?: "reasoning" | "effort";
+  effortParameterId?: CursorEffortParameterId;
 }): CursorModel[] {
   const first = options.variants[0];
   if (!first) return [];
@@ -329,7 +336,7 @@ export function modelsFromParameterizedMetadata(
   for (const model of parameterizedModels) {
     const groups = new Map<
       string,
-      { effortParameterId?: "reasoning" | "effort"; variants: CursorParameterizedVariant[] }
+      { effortParameterId?: CursorEffortParameterId; variants: CursorParameterizedVariant[] }
     >();
     for (const variant of model.variants) {
       if (variant.parameters.length === 0) continue;
