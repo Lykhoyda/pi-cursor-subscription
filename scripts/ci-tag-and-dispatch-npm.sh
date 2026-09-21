@@ -5,6 +5,43 @@
 # to publish.yml (trusted publisher filename).
 set -euo pipefail
 
+is_version_packages_subject() {
+  # changesets/action commit-message; squash merges may append " (#N)".
+  [[ "$1" == "chore: version packages"* ]]
+}
+
+is_version_packages_rev() {
+  is_version_packages_subject "$(git log -1 --format=%s "$1")"
+}
+
+# Publish only from the generated Version Packages commit, not every
+# changeset-free push to main (a hand-bumped package.json would otherwise ship).
+allow_npm_release_from_head() {
+  if is_version_packages_rev HEAD; then
+    return 0
+  fi
+  if git rev-parse --verify --quiet HEAD^2 >/dev/null \
+    && is_version_packages_rev HEAD^2; then
+    return 0
+  fi
+  return 1
+}
+
+if [ "${1:-}" = --should-release ]; then
+  if allow_npm_release_from_head; then
+    echo yes
+  else
+    echo no
+  fi
+  exit 0
+fi
+
+if ! allow_npm_release_from_head; then
+  echo "HEAD is not a Version Packages commit; skip npm publish."
+  git log -1 --format=%s
+  exit 0
+fi
+
 : "${GITHUB_SHA:?}"
 : "${GITHUB_REPOSITORY:?}"
 GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"

@@ -41,6 +41,8 @@ jobs:
 
       - name: Tag unpublished version and dispatch npm publish
         if: steps.changesets.outputs.has-changesets != 'true'
+        # Script still no-ops unless HEAD (or merge second parent) is
+        # "chore: version packages", so ordinary changeset-free pushes skip.
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/ci-tag-and-dispatch-npm.sh
