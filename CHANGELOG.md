@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0
+
+### Minor Changes
+
+- [#28](https://github.com/Lykhoyda/pi-cursor-subscription/pull/28) [`2a64d02`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/2a64d02ba06eecf6226a6b1ffc179f2484cda628) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Run Cursor-native shell, fetch, write, and delete on the Run RPC by default. Set `PI_CURSOR_NATIVE_EXEC=0` to reject them and force Pi MCP tools.
+
+### Patch Changes
+
+- [#31](https://github.com/Lykhoyda/pi-cursor-subscription/pull/31) [`917db45`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/917db45e6ef9dde8c6725e3651133008767c07da) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Cancel an in-flight native shell when Cursor aborts, and stop pausing the stream idle watchdog during native exec so a stuck shell cannot leave the bridge open forever. Shell streams Cursor marks as background end with a backgrounded event after their output, so the turn resumes. `/cursor.doctor` prints the resolved idle-watchdog values.
+
 ## 1.5.3
 
 ### Patch Changes
