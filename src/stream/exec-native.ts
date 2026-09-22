@@ -30,6 +30,8 @@ import path from "node:path";
 
 import { create } from "@bufbuild/protobuf";
 
+import { lifecycleLog } from "./debug-log.js";
+
 import {
   DeleteErrorSchema,
   DeleteFileNotFoundSchema,
@@ -65,6 +67,7 @@ import {
   ShellFailureSchema,
   ShellRejectedSchema,
   ShellResultSchema,
+  ShellStreamBackgroundedSchema,
   ShellStreamExitSchema,
   ShellStreamSchema,
   ShellStreamStartSchema,
@@ -200,6 +203,7 @@ function isSkippedDir(name: string): boolean {
 export function dispatchNativeExec(
   execCase: string,
   args: Record<string, unknown>,
+  signal?: AbortSignal,
 ): NativeExecDispatch | undefined {
   switch (execCase) {
     case "readArgs":
@@ -228,9 +232,9 @@ export function dispatchNativeExec(
         },
       };
     case "shellArgs":
-      return { kind: "async", run: () => execShell(args) };
+      return { kind: "async", run: () => execShell(args, signal) };
     case "shellStreamArgs":
-      return { kind: "stream", run: (emit) => execShellStream(args, emit) };
+      return { kind: "stream", run: (emit) => execShellStream(args, emit, signal) };
     case "fetchArgs":
       return { kind: "async", run: () => execFetch(args) };
     default:
@@ -665,7 +669,10 @@ function execDiagnostics(args: Record<string, unknown>): NativeExecFrame {
   };
 }
 
-async function execShell(args: Record<string, unknown>): Promise<NativeExecFrame> {
+async function execShell(
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<NativeExecFrame> {
   const command = typeof args.command === "string" ? args.command : "";
   const workingDirectory =
     typeof args.workingDirectory === "string" && args.workingDirectory.length > 0
@@ -708,7 +715,7 @@ async function execShell(args: Record<string, unknown>): Promise<NativeExecFrame
     };
   }
   const started = Date.now();
-  const result = await runShellCommand(command, cwdResolved.path, SHELL_TIMEOUT_MS);
+  const result = await runShellCommand(command, cwdResolved.path, SHELL_TIMEOUT_MS, signal);
   const executionTime = Date.now() - started;
   if (result.exitCode === 0) {
     return {
@@ -752,6 +759,7 @@ async function execShell(args: Record<string, unknown>): Promise<NativeExecFrame
 async function execShellStream(
   args: Record<string, unknown>,
   emit: (frame: NativeExecFrame) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const command = typeof args.command === "string" ? args.command : "";
   const workingDirectory =
@@ -782,7 +790,26 @@ async function execShellStream(
       event: { case: "start", value: create(ShellStreamStartSchema, {}) },
     }),
   });
-  const result = await runShellCommand(command, cwdResolved.path, SHELL_TIMEOUT_MS);
+  const startedAt = Date.now();
+  lifecycleLog("shell_stream_begin", {
+    hasCommand: command.length > 0,
+    isBackground: args.isBackground === true,
+    timeoutBehavior: typeof args.timeoutBehavior === "number" ? args.timeoutBehavior : undefined,
+  });
+  const result = await runShellCommand(command, cwdResolved.path, SHELL_TIMEOUT_MS, signal);
+  // Cursor's shell client treats timeoutBehavior BACKGROUND (2) with an unset
+  // block timeout as "resume the model on a backgrounded event", and ignores
+  // exit. A finished command still puts its output on the stream first.
+  const backgrounded = args.timeoutBehavior === 2;
+  lifecycleLog("shell_stream_end", {
+    exitCode: result.exitCode,
+    timedOut: result.timedOut,
+    aborted: result.aborted,
+    stdoutBytes: Buffer.byteLength(result.stdout),
+    stderrBytes: Buffer.byteLength(result.stderr),
+    elapsedMs: Date.now() - startedAt,
+    terminal: backgrounded ? "backgrounded" : "exit",
+  });
   if (result.stdout) {
     emit({
       resultCase: "shellStream",
@@ -799,6 +826,23 @@ async function execShellStream(
       }),
     });
   }
+  if (backgrounded) {
+    emit({
+      resultCase: "shellStream",
+      value: create(ShellStreamSchema, {
+        event: {
+          case: "backgrounded",
+          value: create(ShellStreamBackgroundedSchema, {
+            shellId: 1,
+            command,
+            workingDirectory: cwdResolved.path,
+            msToWait: 0,
+          }),
+        },
+      }),
+    });
+    return;
+  }
   emit({
     resultCase: "shellStream",
     value: create(ShellStreamSchema, {
@@ -807,7 +851,7 @@ async function execShellStream(
         value: create(ShellStreamExitSchema, {
           code: result.exitCode,
           cwd: cwdResolved.path,
-          aborted: result.timedOut,
+          aborted: result.timedOut || result.aborted,
         }),
       },
     }),
@@ -1059,24 +1103,38 @@ async function scrubDarwinEnvBlock(): Promise<void> {
 /**
  * The command itself is not confined — only its starting cwd is workspace-checked
  * (`cd /` works). Env is scrubbed of secret-looking names (child copy and this
- * process's inspectable block) and the timeout SIGKILLs the whole process group so
- * `trap '' TERM` or a backgrounded grandchild cannot outlive it or hold the stdout
- * pipe open.
+ * process's inspectable block) and the timeout or an AbortSignal SIGKILLs the whole
+ * process group so `trap '' TERM` or a backgrounded grandchild cannot outlive it
+ * or hold the stdout pipe open. If `close` still does not arrive, the promise
+ * settles after a short grace.
  */
+const SHELL_KILL_GRACE_MS = 1_000;
+
 export async function runShellCommand(
   command: string,
   cwd: string,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<{
   stdout: string;
   stderr: string;
   exitCode: number;
   signal: string;
   timedOut: boolean;
+  aborted: boolean;
 }> {
   await scrubSecretsFromEnvBlock();
+  if (signal?.aborted) {
+    return { stdout: "", stderr: "aborted", exitCode: 1, signal: "SIGKILL", timedOut: false, aborted: true };
+  }
   return new Promise((resolve) => {
     const isWin = process.platform === "win32";
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let aborted = false;
+    let settled = false;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
     const child = spawn(
       isWin ? "cmd.exe" : "/bin/sh",
       isWin ? ["/d", "/s", "/c", command] : ["-c", command],
@@ -1087,11 +1145,26 @@ export async function runShellCommand(
         detached: !isWin,
       },
     );
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
+    // Foreground shells must see EOF. An open stdin pipe is how a command that
+    // reads input sits forever, and the 30s kill never helps if this process
+    // group is not the one holding the pipe.
+    child.stdin?.end();
+    const finish = (code: number | null, closeSignal: NodeJS.Signals | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (graceTimer) clearTimeout(graceTimer);
+      signal?.removeEventListener("abort", onAbort);
+      resolve({
+        stdout,
+        stderr: aborted && !stderr ? "aborted" : stderr,
+        exitCode: code ?? 1,
+        signal: closeSignal ?? (timedOut || aborted ? "SIGKILL" : ""),
+        timedOut,
+        aborted,
+      });
+    };
+    const killChild = () => {
       // ponytail: Windows kills cmd.exe only; use taskkill /T if orphaned children matter there.
       if (isWin || child.pid === undefined) {
         child.kill();
@@ -1102,8 +1175,37 @@ export async function runShellCommand(
       } catch {
         child.kill("SIGKILL");
       }
+    };
+    // A grandchild that survived the process-group kill can hold stdout open, so
+    // `close` never fires and the caller waits forever. Settle anyway.
+    const armGrace = () => {
+      if (graceTimer) return;
+      graceTimer = setTimeout(() => {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // Already dead.
+        }
+        finish(null, "SIGKILL");
+      }, SHELL_KILL_GRACE_MS);
+      graceTimer.unref?.();
+    };
+    const onAbort = () => {
+      if (settled) return;
+      aborted = true;
+      killChild();
+      armGrace();
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killChild();
+      armGrace();
     }, timeoutMs);
     timer.unref?.();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
     child.stdout?.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
       if (Buffer.byteLength(stdout, "utf8") > MAX_SHELL_OUTPUT_BYTES) {
@@ -1117,24 +1219,11 @@ export async function runShellCommand(
       }
     });
     child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({
-        stdout,
-        stderr: error.message,
-        exitCode: 1,
-        signal: "",
-        timedOut,
-      });
+      stderr = error.message;
+      finish(1, null);
     });
-    child.on("close", (code, signal) => {
-      clearTimeout(timer);
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code ?? 1,
-        signal: signal ?? "",
-        timedOut,
-      });
+    child.on("close", (code, closeSignal) => {
+      finish(code, closeSignal);
     });
   });
 }

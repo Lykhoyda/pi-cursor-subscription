@@ -15,6 +15,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { bridgeCloseGaps } from "../src/stream/debug-log.js";
 import {
   DIST_ENTRY,
   type Selection,
@@ -166,6 +167,12 @@ async function runPi(selection: Selection, project: string): Promise<void> {
       `elapsed=${Date.now() - startedAt}ms usage(in=${usage?.input ?? "?"} out=${usage?.output ?? "?"})`,
     );
     log("reply", `"${summary.finalText.replace(/\s+/g, " ").trim().slice(0, 200)}"`);
+    const gaps = bridgeCloseGaps(existsSync(lifecycleLog) ? readFileSync(lifecycleLog, "utf8") : "");
+    if (gaps.started === 0) throw new SmokeFailure("lifecycle", "no stream_start in the lifecycle log");
+    if (gaps.open.length > 0) {
+      throw new SmokeFailure("lifecycle", `bridge never closed for ${gaps.open.join(", ")}`);
+    }
+    log("lifecycle", `streams=${gaps.started} all closed`);
   } finally {
     rmSync(sandbox, { recursive: true, force: true });
   }

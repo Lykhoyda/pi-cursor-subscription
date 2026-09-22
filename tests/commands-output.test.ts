@@ -133,6 +133,48 @@ describe("cursor command output routing", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  it("prints resolved idle-watchdog defaults instead of the raw env var", async () => {
+    const keys = [
+      "PI_CURSOR_STREAM_IDLE_TIMEOUT_MS",
+      "PI_CURSOR_RESUME_IDLE_TIMEOUT_MS",
+      "PI_CURSOR_STREAM_IDLE_MAX_RETRIES",
+      "PI_CURSOR_H2_IDLE_TIMEOUT_MS",
+    ];
+    const saved = new Map(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    try {
+      const handlers = registerHandlers();
+      const notify = vi.fn();
+      await handlers.get("cursor.doctor")!("", uiContext(notify));
+      const text = String(notify.mock.calls[0]?.[0]);
+      expect(text).toContain("streamIdleTimeoutMs=180000 (default)");
+      expect(text).toContain("resumeIdleTimeoutMs=180000 (default)");
+      expect(text).toContain("streamIdleMaxRetries=5 (default)");
+      expect(text).toContain("h2IdleTimeoutMs=0 (default)");
+      expect(text).not.toContain("0(disabled)");
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it("marks an explicit idle timeout as coming from the environment", async () => {
+    const key = "PI_CURSOR_STREAM_IDLE_TIMEOUT_MS";
+    const saved = process.env[key];
+    process.env[key] = "90000";
+    try {
+      const handlers = registerHandlers();
+      const notify = vi.fn();
+      await handlers.get("cursor.doctor")!("", uiContext(notify));
+      expect(String(notify.mock.calls[0]?.[0])).toContain("streamIdleTimeoutMs=90000 (env)");
+    } finally {
+      if (saved === undefined) delete process.env[key];
+      else process.env[key] = saved;
+    }
+  });
+
   it("sends /cursor.doctor through notify only when a UI is present", async () => {
     const handlers = registerHandlers();
     const notify = vi.fn();

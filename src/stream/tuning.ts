@@ -58,12 +58,20 @@ export const MAX_CHECKPOINT_BYTES = 48 * 1024 * 1024;
 export const DEFAULT_H2_CONNECT_TIMEOUT_MS = 30_000;
 
 /**
- * Activity idle kill after first I/O. Default 0 (disabled): parent heartbeats
- * already keep the bridge alive, and a hard idle kill during long tool pauses
- * was a common source of "Bridge connection lost" mid-session. Set
- * PI_CURSOR_H2_IDLE_TIMEOUT_MS to re-enable a safety net.
+ * Activity idle kill after first I/O. Default 0 (disabled). Parent heartbeats
+ * write every 5s and reset this timer, so a non-zero value still would not
+ * close a bridge whose server has gone silent. The stream idle watchdog is
+ * that net. Set PI_CURSOR_H2_IDLE_TIMEOUT_MS to re-enable a safety net against
+ * a connection that produces no bytes at all.
  */
 export const DEFAULT_H2_IDLE_TIMEOUT_MS = 0;
+
+/** `180000 (default)` when unset, `90000 (env)` when the operator set a value. */
+export function formatResolvedTimeout(resolvedMs: number, envValue: string | undefined): string {
+  const raw = envValue?.trim();
+  const source = raw === undefined || raw === "" ? "default" : "env";
+  return `${resolvedMs} (${source})`;
+}
 
 export function resolveActiveBridgeTtlMs(envValue?: string): number {
   if (envValue === undefined || envValue === "") return DEFAULT_ACTIVE_BRIDGE_TTL_MS;

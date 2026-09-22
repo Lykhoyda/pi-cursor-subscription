@@ -74,6 +74,12 @@ import type { PendingExec, StreamState } from "./types.js";
 import { setLastStreamEvent } from "../diagnostics/diagnostics.js";
 import { asString, cursorEnvBoolean } from "../utils/util.js";
 
+/** Cancels in-flight native shell/fetch and rotates so the next exec is not born aborted. */
+export interface NativeExecAbort {
+  signal: () => AbortSignal;
+  abort: () => void;
+}
+
 /**
  * Classifies a server message for the stream idle watchdog.
  *
@@ -98,6 +104,7 @@ export function processServerMessage(
   onExecUnanswerable?: (execCase: string | undefined) => void,
   onLocalWork?: (work: Promise<void>) => void,
   convKey?: string,
+  nativeExecAbort?: NativeExecAbort,
 ): StreamProgress {
   const msgCase = msg.message.case;
   debugLog("server_message", { msgCase, msg });
@@ -173,7 +180,14 @@ export function processServerMessage(
   if (msgCase === "execServerMessage") {
     const execMsg = msg.message.value as ExecServerMessage;
     const execCase = (execMsg as { message?: { case?: string } }).message?.case;
-    const handled = handleExecMessage(execMsg, mcpTools, sendFrame, onMcpExec, onLocalWork);
+    const handled = handleExecMessage(
+      execMsg,
+      mcpTools,
+      sendFrame,
+      onMcpExec,
+      onLocalWork,
+      nativeExecAbort,
+    );
     // execServerMessage was previously invisible in the lifecycle log — the exact
     // blind spot behind unexplained mid-run stalls. Record the exec case and whether
     // we answered it, so a parked stream can be diagnosed from the sanitized log
@@ -227,8 +241,12 @@ export function processServerMessage(
     const controlCase = control.message?.case;
     debugLog("native.exec_server_control", { controlCase });
     lifecycleLog("exec_server_control", { controlCase });
-    // Abort notices are informational; the stream may continue or end separately.
-    return controlCase === "abort" ? "work" : "none";
+    // Abort cancels native exec started on this stream. The run itself may continue.
+    if (controlCase === "abort") {
+      nativeExecAbort?.abort();
+      return "work";
+    }
+    return "none";
   }
   if (msgCase === "conversationCheckpointUpdate") {
     const stateStructure = msg.message.value as ConversationStateStructure;
@@ -355,8 +373,16 @@ function handleExecMessage(
   sendFrame: (data: Uint8Array) => void,
   onMcpExec: (exec: PendingExec) => void,
   onLocalWork?: (work: Promise<void>) => void,
+  nativeExecAbort?: NativeExecAbort,
 ): boolean {
-  return handleExecMessageInner(execMsg, mcpTools, sendFrame, onMcpExec, onLocalWork);
+  return handleExecMessageInner(
+    execMsg,
+    mcpTools,
+    sendFrame,
+    onMcpExec,
+    onLocalWork,
+    nativeExecAbort,
+  );
 }
 
 // mcpTools is fixed for the life of a stream but `mcpArgs` exec messages can arrive many times
@@ -445,6 +471,7 @@ function handleExecMessageInner(
   sendFrame: (data: Uint8Array) => void,
   onMcpExec: (exec: PendingExec) => void,
   onLocalWork?: (work: Promise<void>) => void,
+  nativeExecAbort?: NativeExecAbort,
 ): boolean {
   const execCase = (execMsg as any).message.case;
   const REJECT_REASON = nativeToolRejectReason(execCase ?? "", mcpTools);
@@ -515,7 +542,7 @@ function handleExecMessageInner(
     sendPrivilegedNativeExecRejection(execMsg, execCase ?? "", nativeArgs, mcpTools, sendFrame);
     return true;
   }
-  const native = dispatchNativeExec(execCase ?? "", nativeArgs);
+  const native = dispatchNativeExec(execCase ?? "", nativeArgs, nativeExecAbort?.signal());
   if (native?.kind === "sync") {
     sendNativeFrame(execMsg, native.frame, sendFrame);
     return true;
