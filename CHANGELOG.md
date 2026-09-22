@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.3
+
+### Patch Changes
+
+- [#24](https://github.com/Lykhoyda/pi-cursor-subscription/pull/24) [`187bb70`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/187bb70532ec01a0b4143e112981669832be82cf) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Register Cursor Grok 4.7 with its 256K default window, 500K Max Mode window, and `reasoning_effort` levels. GetUsableModels rows were stuck at 200K, and the effort parameter was dropped because Cursor names it `reasoning_effort` rather than `effort`.
+
+- [#27](https://github.com/Lykhoyda/pi-cursor-subscription/pull/27) [`b08b8f7`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/b08b8f7f5e913081e274af742d419fd41e31a495) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Tell the model when a rejected native shell has no Pi MCP fallback, instead of pointing at tools the session does not have.
+
+- [#27](https://github.com/Lykhoyda/pi-cursor-subscription/pull/27) [`b08b8f7`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/b08b8f7f5e913081e274af742d419fd41e31a495) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Read Pi 0.86 transcript tools and prompt sections, so `bash` and `fm_watch_arm_pi` reach Cursor instead of an empty tool list.
+
 ## 1.5.2
 
 ### Patch Changes
