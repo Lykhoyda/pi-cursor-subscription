@@ -6,7 +6,7 @@ Guidance and repository standards for LLM coding agents working on `@lykhoyda/pi
 
 ## 1. Project Overview
 
-`@lykhoyda/pi-cursor-subscription` is a Cursor provider extension for the **Pi Coding Agent**, forked from `@rahularya01/pi-cursor`. It enables direct streaming communication with Cursor models (Claude, GPT-5.5, Composer, Grok, Gemini, Kimi) over HTTP/2 using Connect RPC and Protobuf binary framing. Privileged native exec (shell/fetch/write/delete) is off unless `PI_CURSOR_NATIVE_EXEC=1`.
+`@lykhoyda/pi-cursor-subscription` is a Cursor provider extension for the **Pi Coding Agent**, forked from `@rahularya01/pi-cursor`. It enables direct streaming communication with Cursor models (Claude, GPT-5.5, Composer, Grok, Gemini, Kimi) over HTTP/2 using Connect RPC and Protobuf binary framing. Privileged native exec (shell/fetch/write/delete) is on unless `PI_CURSOR_NATIVE_EXEC=0`.
 
 ### Core Stack
 
@@ -167,7 +167,7 @@ src/
 
 | Variable                                       | Description                                                                                                                                                          |
 | :--------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PI_CURSOR_NATIVE_EXEC`                        | Set to `1` to allow Cursor-native shell/fetch/write/delete on the Run RPC (default: off; needs Pi MCP tools such as `bash` when left off). Shell is unconfined beyond its cwd; secret-named env vars are stripped |
+| `PI_CURSOR_NATIVE_EXEC`                        | Set to `0` to reject Cursor-native shell/fetch/write/delete on the Run RPC (default: on). Shell is unconfined beyond its cwd; secret-named env vars are stripped |
 | `PI_CURSOR_HOSTED_WEB`                         | Set to `1` to auto-approve Cursor-hosted web search / Exa search / Exa fetch / unnamed web-fetch prompts (default: reject)                                           |
 | `CURSOR_ACCESS_TOKEN`                          | Static access token override for Cursor API calls                                                                                                                    |
 | `PI_CURSOR_AGENT_URL` / `CURSOR_AGENT_URL`     | Base URL override for Agent Connect RPC (default: `https://agentn.us.api5.cursor.sh`)                                                                                |
