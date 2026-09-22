@@ -32,7 +32,7 @@ import type { PiThinkingLevel } from "../src/types/enums.js";
 import { redactSecrets } from "../src/utils/security.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const DIST_ENTRY = join(ROOT, "dist", "index.js");
+export const DIST_ENTRY = join(ROOT, "dist", "index.js");
 const DEFAULT_MODEL_PREFERENCE = ["grok-4.7", "cursor-grok-4.7", "grok-4.6", "cursor-grok-4.6"];
 const GROK_SMOKE_ID = /grok-4\.[67]/;
 const DEFAULT_PROMPT = "Reply with exactly one word: pong";
@@ -47,7 +47,7 @@ interface RunResult {
   timedOut: boolean;
 }
 
-interface Selection {
+export interface Selection {
   model: ProcessedModel;
   thinking: PiThinkingLevel;
 }
@@ -70,17 +70,23 @@ interface PiAssistantMessage {
   usage?: { input?: number; output?: number };
 }
 
-function log(step: string, message: string): void {
-  console.log(`[smoke-pi-grok] ${step}: ${redactSecrets(message)}`);
+let logPrefix = "smoke-pi-grok";
+
+export function setLogPrefix(prefix: string): void {
+  logPrefix = prefix;
 }
 
-function fail(step: string, message: string, details?: string): never {
-  console.error(`[smoke-pi-grok] FAIL ${step}: ${redactSecrets(message)}`);
+export function log(step: string, message: string): void {
+  console.log(`[${logPrefix}] ${step}: ${redactSecrets(message)}`);
+}
+
+export function fail(step: string, message: string, details?: string): never {
+  console.error(`[${logPrefix}] FAIL ${step}: ${redactSecrets(message)}`);
   if (details) console.error(redactSecrets(details).trimEnd());
   process.exit(1);
 }
 
-async function resolveCredentialSource(): Promise<string> {
+export async function resolveCredentialSource(): Promise<string> {
   const resolved = await getStartupCursorAccessToken();
   if (!resolved) {
     fail(
@@ -92,7 +98,7 @@ async function resolveCredentialSource(): Promise<string> {
   return resolved.accessToken;
 }
 
-async function pickGrokModel(accessToken: string): Promise<Selection> {
+export async function pickGrokModel(accessToken: string): Promise<Selection> {
   // discoverCursorCatalog() also persists the on-disk catalog cache, which is what lets
   // pi register Grok at startup — the bundled fallback catalog has no Grok 4.7 row.
   const catalog = await discoverCursorCatalog(accessToken);
@@ -145,9 +151,18 @@ async function pickGrokModel(accessToken: string): Promise<Selection> {
   return { model, thinking };
 }
 
-function run(cmd: string, args: string[], timeoutMs?: number): Promise<RunResult> {
+export function run(
+  cmd: string,
+  args: string[],
+  timeoutMs?: number,
+  options?: { cwd?: string; env?: NodeJS.ProcessEnv },
+): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(cmd, args, {
+      cwd: options?.cwd ?? ROOT,
+      env: options?.env ?? process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -170,14 +185,14 @@ function run(cmd: string, args: string[], timeoutMs?: number): Promise<RunResult
   });
 }
 
-async function buildDist(): Promise<void> {
+export async function buildDist(): Promise<void> {
   const result = await run(process.execPath, ["run", "build"]);
   if (result.code !== 0) fail("build", "bun run build failed", result.stderr || result.stdout);
   if (!existsSync(DIST_ENTRY)) fail("build", `${DIST_ENTRY} missing after build`);
   log("build", "dist/index.js ready");
 }
 
-function locatePi(): string {
+export function locatePi(): string {
   const explicit = process.env.PI_BIN?.trim();
   if (explicit) return explicit;
   const onPath = Bun.which("pi");
@@ -190,7 +205,7 @@ function locatePi(): string {
   );
 }
 
-function parseJsonLines(stdout: string): { events: PiEvent[]; nonJson: string[] } {
+export function parseJsonLines(stdout: string): { events: PiEvent[]; nonJson: string[] } {
   const events: PiEvent[] = [];
   const nonJson: string[] = [];
   for (const line of stdout.split("\n")) {
@@ -205,7 +220,7 @@ function parseJsonLines(stdout: string): { events: PiEvent[]; nonJson: string[] 
   return { events, nonJson };
 }
 
-function summarizeAssistant(events: PiEvent[]) {
+export function summarizeAssistant(events: PiEvent[]) {
   let deltaCount = 0;
   let streamed = "";
   const errorEvents: unknown[] = [];
@@ -312,8 +327,10 @@ async function runPi({ model, thinking }: Selection): Promise<void> {
   }
 }
 
-const accessToken = await resolveCredentialSource();
-const selection = await pickGrokModel(accessToken);
-await buildDist();
-await runPi(selection);
-console.log("smoke-pi-grok: ok");
+if (import.meta.main) {
+  const accessToken = await resolveCredentialSource();
+  const selection = await pickGrokModel(accessToken);
+  await buildDist();
+  await runPi(selection);
+  console.log("smoke-pi-grok: ok");
+}

@@ -54,9 +54,12 @@ bun run smoke:models  # Smoke test model discovery RPC
 bun run smoke:stream  # Smoke test HTTP/2 streaming
 bun run smoke:wire    # Smoke test low-level wire protocol frames
 bun run smoke:pi-grok # End-to-end: pi CLI + this extension + Grok 4.7 (falls back to 4.6) streams a reply (uses the auth cascade; prints credential source only)
+bun run smoke:pi-firstmate # Same path, plus a Firstmate checkout's watcher extension; asserts bash and fm_watch_arm_pi are on the Cursor request
 ```
 
 `smoke:pi-grok` is the agent-runnable regression check. It prefers a live Grok 4.7 id from the provider catalog and falls back to Grok 4.6, builds `dist/`, runs `pi --print --mode json` with only this extension loaded, and asserts a non-empty streamed reply on `provider=cursor` / `api=cursor-native`. Override with `CURSOR_SMOKE_MODEL`, `CURSOR_SMOKE_THINKING`, `CURSOR_SMOKE_PROMPT`, `CURSOR_SMOKE_TIMEOUT_MS`, `PI_BIN`.
+
+`smoke:pi-firstmate` loads `.pi/extensions/fm-primary-pi-watch.ts` from `CURSOR_SMOKE_FIRSTMATE` and checks the lifecycle log's `toolNames` for `bash` and `fm_watch_arm_pi`. `FM_HOME` is a temp dir, so the smoke does not write Firstmate state into that checkout.
 
 ---
 
@@ -164,7 +167,7 @@ src/
 
 | Variable                                       | Description                                                                                                                                                          |
 | :--------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PI_CURSOR_NATIVE_EXEC`                        | Set to `1` to allow Cursor-native shell/fetch/write/delete on the Run RPC (default: off). Shell is unconfined beyond its cwd; secret-named env vars are stripped     |
+| `PI_CURSOR_NATIVE_EXEC`                        | Set to `1` to allow Cursor-native shell/fetch/write/delete on the Run RPC (default: off; needs Pi MCP tools such as `bash` when left off). Shell is unconfined beyond its cwd; secret-named env vars are stripped |
 | `PI_CURSOR_HOSTED_WEB`                         | Set to `1` to auto-approve Cursor-hosted web search / Exa search / Exa fetch / unnamed web-fetch prompts (default: reject)                                           |
 | `CURSOR_ACCESS_TOKEN`                          | Static access token override for Cursor API calls                                                                                                                    |
 | `PI_CURSOR_AGENT_URL` / `CURSOR_AGENT_URL`     | Base URL override for Agent Connect RPC (default: `https://agentn.us.api5.cursor.sh`)                                                                                |

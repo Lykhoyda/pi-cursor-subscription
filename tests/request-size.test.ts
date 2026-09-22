@@ -160,8 +160,11 @@ describe("native Cursor exec steering", () => {
     );
   });
 
-  it("falls back to a generic MCP-only hint when no matching tool exists", () => {
+  it("falls back to an explicit no-fallback hint when no matching tool exists", () => {
     expect(serverMessageInternals.nativeToolRejectReason("shellArgs", [])).toMatch(
+      /no MCP fallback tool/,
+    );
+    expect(serverMessageInternals.nativeToolRejectReason("shellArgs", [])).not.toMatch(
       /Use the MCP tools/,
     );
   });

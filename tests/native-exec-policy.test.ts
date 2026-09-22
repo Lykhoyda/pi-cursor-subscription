@@ -53,5 +53,53 @@ describe("privileged native exec dispatch", () => {
       .result;
     expect(result.case).toBe("rejected");
     expect(result.value.reason).toContain("PI_CURSOR_NATIVE_EXEC=1");
+    expect(result.value.reason).toContain("no MCP fallback");
+    expect(result.value.reason).not.toContain("Use Pi MCP tools");
+  });
+
+  it("names bash when that MCP tool is actually available", () => {
+    const frames: Uint8Array[] = [];
+    serverMessageInternals.handleExecMessageInner(
+      {
+        id: 8,
+        execId: "exec-8",
+        message: { case: "shellArgs", value: { command: "echo hi", workingDirectory: "." } },
+      } as never,
+      [{ name: "bash", toolName: "bash" }] as never,
+      (frame: Uint8Array) => frames.push(frame),
+      () => {
+        throw new Error("should not execute MCP");
+      },
+    );
+    const answer = fromBinary(AgentClientMessageSchema, frames[0]!.subarray(5));
+    const exec = answer.message.value as ExecClientMessage;
+    const result = (exec.message.value as { result: { value: { reason?: string } } }).result;
+    expect(result.value.reason).toContain('MCP tool "bash"');
+    expect(result.value.reason).not.toContain("no MCP fallback");
+  });
+
+  it("warns once when a real turn has neither tools nor native exec", () => {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = ((message?: unknown) => {
+      warnings.push(String(message));
+    }) as typeof console.warn;
+    try {
+      serverMessageInternals.resetNoExecSurfaceWarning();
+      serverMessageInternals.warnIfNoExecSurface(0, false);
+      serverMessageInternals.warnIfNoExecSurface(0, false);
+      serverMessageInternals.warnIfNoExecSurface(0, true);
+      serverMessageInternals.warnIfNoExecSurface(2, false);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("no MCP fallback");
+      process.env[NATIVE_EXEC_ENV] = "1";
+      serverMessageInternals.resetNoExecSurfaceWarning();
+      serverMessageInternals.warnIfNoExecSurface(0, false);
+      expect(warnings).toHaveLength(1);
+    } finally {
+      console.warn = original;
+      delete process.env[NATIVE_EXEC_ENV];
+      serverMessageInternals.resetNoExecSurfaceWarning();
+    }
   });
 });
