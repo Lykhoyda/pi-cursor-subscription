@@ -11,22 +11,27 @@ afterEach(() => {
 });
 
 describe("privileged native exec policy", () => {
-  it("default-denies shell/fetch/write/delete and allows read/ls/grep", () => {
+  it("allows shell/fetch/write/delete by default and still allows read/ls/grep", () => {
     expect(serverMessageInternals.isNativeExecAllowed("readArgs")).toBe(true);
     expect(serverMessageInternals.isNativeExecAllowed("lsArgs")).toBe(true);
     expect(serverMessageInternals.isNativeExecAllowed("grepArgs")).toBe(true);
+    expect(serverMessageInternals.isNativeExecAllowed("shellArgs")).toBe(true);
+    expect(serverMessageInternals.isNativeExecAllowed("shellStreamArgs")).toBe(true);
+    expect(serverMessageInternals.isNativeExecAllowed("fetchArgs")).toBe(true);
+    expect(serverMessageInternals.isNativeExecAllowed("writeArgs")).toBe(true);
+    expect(serverMessageInternals.isNativeExecAllowed("deleteArgs")).toBe(true);
+    process.env[NATIVE_EXEC_ENV] = "0";
     expect(serverMessageInternals.isNativeExecAllowed("shellArgs")).toBe(false);
-    expect(serverMessageInternals.isNativeExecAllowed("shellStreamArgs")).toBe(false);
     expect(serverMessageInternals.isNativeExecAllowed("fetchArgs")).toBe(false);
     expect(serverMessageInternals.isNativeExecAllowed("writeArgs")).toBe(false);
     expect(serverMessageInternals.isNativeExecAllowed("deleteArgs")).toBe(false);
-    process.env[NATIVE_EXEC_ENV] = "1";
-    expect(serverMessageInternals.isNativeExecAllowed("shellArgs")).toBe(true);
+    expect(serverMessageInternals.isNativeExecAllowed("readArgs")).toBe(true);
   });
 });
 
 describe("privileged native exec dispatch", () => {
-  it("rejects shellArgs on the stream without spawning", () => {
+  it("rejects shellArgs on the stream without spawning when native exec is off", () => {
+    process.env[NATIVE_EXEC_ENV] = "0";
     const frames: Uint8Array[] = [];
     const handled = serverMessageInternals.handleExecMessageInner(
       {
@@ -58,6 +63,7 @@ describe("privileged native exec dispatch", () => {
   });
 
   it("names bash when that MCP tool is actually available", () => {
+    process.env[NATIVE_EXEC_ENV] = "0";
     const frames: Uint8Array[] = [];
     serverMessageInternals.handleExecMessageInner(
       {
@@ -85,6 +91,7 @@ describe("privileged native exec dispatch", () => {
       warnings.push(String(message));
     }) as typeof console.warn;
     try {
+      process.env[NATIVE_EXEC_ENV] = "0";
       serverMessageInternals.resetNoExecSurfaceWarning();
       serverMessageInternals.warnIfNoExecSurface(0, false);
       serverMessageInternals.warnIfNoExecSurface(0, false);
@@ -92,7 +99,7 @@ describe("privileged native exec dispatch", () => {
       serverMessageInternals.warnIfNoExecSurface(2, false);
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain("no MCP fallback");
-      process.env[NATIVE_EXEC_ENV] = "1";
+      delete process.env[NATIVE_EXEC_ENV];
       serverMessageInternals.resetNoExecSurfaceWarning();
       serverMessageInternals.warnIfNoExecSurface(0, false);
       expect(warnings).toHaveLength(1);

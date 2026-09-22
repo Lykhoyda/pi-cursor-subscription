@@ -3,9 +3,9 @@
  * delete, shell, fetch). These run on the open Run RPC so the model can keep
  * generating instead of being told to retry through MCP.
  *
- * Privileged cases (write, delete, shell, fetch) are gated by
- * `PI_CURSOR_NATIVE_EXEC` — off by default in this fork. Paths for the
- * remaining handlers are confined to `process.cwd()`.
+ * Privileged cases (write, delete, shell, fetch) are on by default. Set
+ * `PI_CURSOR_NATIVE_EXEC=0` to reject them and force Pi MCP tools. Paths for
+ * the remaining handlers are confined to `process.cwd()`.
  */
 import { spawn } from "node:child_process";
 import { lookup } from "node:dns/promises";

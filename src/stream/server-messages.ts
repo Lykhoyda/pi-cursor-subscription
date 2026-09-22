@@ -408,18 +408,23 @@ function nativeToolRejectReason(execCase: string, mcpTools: McpToolDefinition[])
 
 let warnedNoExecSurface = false;
 
+/** Shell, fetch, write, and delete on the Run RPC. On unless `PI_CURSOR_NATIVE_EXEC=0`. */
+function isPrivilegedNativeExecEnabled(): boolean {
+  return cursorEnvBoolean("NATIVE_EXEC", true);
+}
+
 /** One warning per process when a real turn can neither shell natively nor via MCP. */
 export function warnIfNoExecSurface(toolCount: number, toolsOmittedForTrivialTurn: boolean): void {
   if (warnedNoExecSurface || toolCount > 0 || toolsOmittedForTrivialTurn) return;
-  if (cursorEnvBoolean("NATIVE_EXEC", false)) return;
+  if (isPrivilegedNativeExecEnabled()) return;
   warnedNoExecSurface = true;
   lifecycleLog("no_exec_surface", {});
   console.warn(`[cursor-provider] ${NO_MCP_FALLBACK}`);
 }
 
 const PRIVILEGED_NATIVE_EXEC_REJECT =
-  "Privileged Cursor-native exec (shell, fetch, write, delete) is disabled in this provider. " +
-  "Use Pi MCP tools instead, or set PI_CURSOR_NATIVE_EXEC=1 to restore upstream behaviour.";
+  "Privileged Cursor-native exec (shell, fetch, write, delete) is disabled because PI_CURSOR_NATIVE_EXEC is off. " +
+  "Use Pi MCP tools instead, or set PI_CURSOR_NATIVE_EXEC=1.";
 
 function isNativeExecAllowed(execCase: string): boolean {
   switch (execCase) {
@@ -428,7 +433,7 @@ function isNativeExecAllowed(execCase: string): boolean {
     case "fetchArgs":
     case "writeArgs":
     case "deleteArgs":
-      return cursorEnvBoolean("NATIVE_EXEC", false);
+      return isPrivilegedNativeExecEnabled();
     default:
       return true;
   }

@@ -44,19 +44,19 @@ pi update git:github.com/Lykhoyda/pi-cursor-subscription
 
 3. **Chat.** If something fails, run `/cursor.doctor` first (token source, endpoint, last error).
 
-## Privileged native exec (default: off)
+## Privileged native exec (default: on)
 
-On the open Run RPC, this fork **rejects** Cursor-native **`shell`**, **`fetch`**, **`write`**, and **`delete`** execs unless you opt in. The model should use **Pi MCP tools** instead (with Pi's confirmation UI): `bash` for shell, `edit` or `write` for file changes. **Read**, **ls**, and **grep** still run on the native exec channel. A session that advertises none of those tools cannot run shell or writes; the rejection says so instead of pointing at tools that are not there.
+On the open Run RPC, Cursor-native **`shell`**, **`fetch`**, **`write`**, and **`delete`** run by default, so a session with no Pi MCP tools can still act. **Read**, **ls**, and **grep** also run on the native exec channel.
 
-Restore upstream 1.4.31+ behaviour only if you accept that risk:
+Native `fetch` refuses loopback, private-network, link-local / cloud-metadata, and other internal addresses, including via redirects.
+
+Native `shell` runs **unconfined** as your user (only its starting directory is workspace-checked); secret-named env vars are stripped from the child and zeroed in Pi's own inspectable environment. See [SECURITY.md](SECURITY.md#privileged-native-exec). Run Pi in a container or VM if that risk is unacceptable.
+
+To reject those execs and force Pi MCP tools (`bash`, `edit`, `write`) instead:
 
 ```bash
-export PI_CURSOR_NATIVE_EXEC=1
+export PI_CURSOR_NATIVE_EXEC=0
 ```
-
-With the flag on, native `fetch` still refuses loopback, private-network, link-local / cloud-metadata, and other internal addresses, including via redirects.
-
-With the flag on, native `shell` runs **unconfined** as your user (only its starting directory is workspace-checked); secret-named env vars are stripped from the child and zeroed in Pi's own inspectable environment. See [SECURITY.md](SECURITY.md#privileged-native-exec) and run Pi in a container or VM if you enable this.
 
 Cursor-hosted web search / Exa fetch permission prompts are also **rejected** unless you opt in (`PI_CURSOR_HOSTED_WEB=1`). That flag is independent of native exec.
 
