@@ -46,7 +46,7 @@ pi update git:github.com/Lykhoyda/pi-cursor-subscription
 
 ## Privileged native exec (default: off)
 
-On the open Run RPC, this fork **rejects** Cursor-native **`shell`**, **`fetch`**, **`write`**, and **`delete`** execs unless you opt in. The model should use **Pi MCP tools** instead (with Pi's confirmation UI). **Read**, **ls**, and **grep** still run on the native exec channel.
+On the open Run RPC, this fork **rejects** Cursor-native **`shell`**, **`fetch`**, **`write`**, and **`delete`** execs unless you opt in. The model should use **Pi MCP tools** instead (with Pi's confirmation UI): `bash` for shell, `edit` or `write` for file changes. **Read**, **ls**, and **grep** still run on the native exec channel. A session that advertises none of those tools cannot run shell or writes; the rejection says so instead of pointing at tools that are not there.
 
 Restore upstream 1.4.31+ behaviour only if you accept that risk:
 
@@ -104,7 +104,8 @@ Reasoning effort (`off` … `max`) maps to Cursor's model variants. Restrict the
 ```bash
 bun install
 bun run check
-bun run smoke:pi-grok   # live: pi + this provider + Grok 4.7 (falls back to 4.6; needs a Cursor login)
+bun run smoke:pi-grok        # live: pi + this provider + Grok 4.7 (falls back to 4.6; needs a Cursor login)
+bun run smoke:pi-firstmate  # live: same, plus a Firstmate watcher extension (CURSOR_SMOKE_FIRSTMATE)
 ```
 
 Architecture, module layout, and the full environment variable list live in [AGENTS.md](AGENTS.md).

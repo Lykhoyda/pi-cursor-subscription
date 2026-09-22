@@ -25,7 +25,7 @@ Treat access and refresh tokens in `~/.pi/agent/auth.json`, Keychain, or `state.
 
 ### Privileged native exec
 
-By default this fork **does not** run Cursor-native `shell`, `fetch`, `write`, or `delete` on the open Run RPC. Those execs are rejected so Pi MCP tools (and Pi's confirmation UI) handle them. Read/ls/grep still run natively.
+By default this fork **does not** run Cursor-native `shell`, `fetch`, `write`, or `delete` on the open Run RPC. Those execs are rejected so Pi MCP tools (and Pi's confirmation UI) handle them — `bash` for shell, `edit` or `write` for file changes. That default is only viable when the session actually advertises those tools. Read/ls/grep still run natively.
 
 To restore upstream 1.4.31+ behaviour:
 

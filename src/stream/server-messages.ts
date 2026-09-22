@@ -386,18 +386,35 @@ const NATIVE_EXEC_MCP_HINTS: Record<string, string[]> = {
   fetchArgs: ["web_search", "fetch"],
 };
 
-function nativeToolRejectReason(execCase: string, mcpTools: McpToolDefinition[]): string {
+function mcpFallbackTool(execCase: string, mcpTools: McpToolDefinition[]): string | undefined {
   const available = availableToolNamesFor(mcpTools);
-  const candidates = (NATIVE_EXEC_MCP_HINTS[execCase] ?? []).filter((name) =>
-    available.includes(name),
-  );
-  if (candidates.length > 0) {
+  return (NATIVE_EXEC_MCP_HINTS[execCase] ?? []).find((name) => available.includes(name));
+}
+
+const NO_MCP_FALLBACK =
+  "Privileged native exec is disabled and no MCP fallback tool is available in this session. " +
+  "Set PI_CURSOR_NATIVE_EXEC=1 or start Pi with a tool surface that provides bash.";
+
+function nativeToolRejectReason(execCase: string, mcpTools: McpToolDefinition[]): string {
+  const fallback = mcpFallbackTool(execCase, mcpTools);
+  if (fallback) {
     return (
       `This native Cursor tool is not available in Pi. ` +
-      `Call the MCP tool "${candidates[0]}" with the same arguments instead.`
+      `Call the MCP tool "${fallback}" with the same arguments instead.`
     );
   }
-  return "This native Cursor tool is not available in Pi. Use the MCP tools provided instead.";
+  return `This native Cursor tool is not available in Pi, and this session has no MCP fallback tool.`;
+}
+
+let warnedNoExecSurface = false;
+
+/** One warning per process when a real turn can neither shell natively nor via MCP. */
+export function warnIfNoExecSurface(toolCount: number, toolsOmittedForTrivialTurn: boolean): void {
+  if (warnedNoExecSurface || toolCount > 0 || toolsOmittedForTrivialTurn) return;
+  if (cursorEnvBoolean("NATIVE_EXEC", false)) return;
+  warnedNoExecSurface = true;
+  lifecycleLog("no_exec_surface", {});
+  console.warn(`[cursor-provider] ${NO_MCP_FALLBACK}`);
 }
 
 const PRIVILEGED_NATIVE_EXEC_REJECT =
@@ -693,7 +710,10 @@ function sendPrivilegedNativeExecRejection(
   mcpTools: McpToolDefinition[],
   sendFrame: (data: Uint8Array) => void,
 ): void {
-  const reason = `${PRIVILEGED_NATIVE_EXEC_REJECT} ${nativeToolRejectReason(execCase, mcpTools)}`;
+  const fallback = mcpFallbackTool(execCase, mcpTools);
+  const reason = fallback
+    ? `${PRIVILEGED_NATIVE_EXEC_REJECT} Call the MCP tool "${fallback}" with the same arguments instead.`
+    : NO_MCP_FALLBACK;
 
   if (execCase === "shellArgs" || execCase === "shellStreamArgs") {
     const rejected = create(ShellRejectedSchema, {
@@ -780,4 +800,8 @@ export const __testInternals = {
   describeUnknownFields,
   dispatchNativeExec,
   isNativeExecAllowed,
+  warnIfNoExecSurface,
+  resetNoExecSurfaceWarning: () => {
+    warnedNoExecSurface = false;
+  },
 };

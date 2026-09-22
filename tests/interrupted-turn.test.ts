@@ -3,6 +3,7 @@ import { fromBinary } from "@bufbuild/protobuf";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import {
   contextToCursorChatCompletionRequest,
+  cursorPromptAndTools,
   interruptedAssistantNotice,
   MAX_INTERRUPTED_NOTICE_ERROR_CHARS,
 } from "../src/stream/pi-adapter.js";
@@ -110,6 +111,51 @@ describe("contextToCursorChatCompletionRequest", () => {
     const parsed = parseMessages(body.messages);
     expect(parsed.userText).toBe("do the thing");
     expect(parsed.turns).toHaveLength(0);
+  });
+
+  it("reads tools and prompt sections from a Pi 0.86 transcript", () => {
+    const context = {
+      messages: [
+        {
+          role: "system",
+          content: "BASE",
+          sections: { watcher: "Arm the watcher with fm_watch_arm_pi." },
+          toolsAdded: [
+            {
+              name: "bash",
+              description: "Run a shell command",
+              parameters: { type: "object", properties: { command: { type: "string" } } },
+            },
+            {
+              name: "fm_watch_arm_pi",
+              description: "Arm the Pi watcher",
+              parameters: { type: "object", properties: {} },
+            },
+          ],
+          timestamp: 0,
+        },
+        {
+          role: "system",
+          content: "Run bin/fm-session-start.sh before anything else.",
+          toolsRemoved: [{ name: "bash" }],
+          timestamp: 1,
+        },
+        { role: "user", content: "hey", timestamp: 2 },
+      ],
+    } as unknown as Context;
+
+    const resolved = cursorPromptAndTools(context);
+    expect(resolved.systemPrompt).toContain("BASE");
+    expect(resolved.systemPrompt).toContain("fm_watch_arm_pi");
+    expect(resolved.systemPrompt).toContain("fm-session-start.sh");
+    expect(resolved.tools.map((tool) => tool.name)).toEqual(["fm_watch_arm_pi"]);
+
+    const body = contextToCursorChatCompletionRequest(model, context, undefined, config);
+    expect(body.messages[0]?.role).toBe("system");
+    expect(body.messages[0]?.content).toContain("fm-session-start.sh");
+    expect(body.messages.filter((message) => message.role === "system")).toHaveLength(1);
+    expect(body.tools?.map((tool) => tool.function.name)).toEqual(["fm_watch_arm_pi"]);
+    expect(body.messages.at(-1)?.content).toBe("hey");
   });
 
   it("does not annotate turns that ended cleanly", () => {

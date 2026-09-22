@@ -17,6 +17,10 @@ import type {
   Tool as PiTool,
   ToolCall as PiToolCall,
 } from "@earendil-works/pi-ai";
+import {
+  getCurrentSystemPrompt,
+  getCurrentTools,
+} from "@earendil-works/pi-ai/utils/transcript";
 
 import { redactSecrets } from "../utils/security.js";
 import type { CursorNativeModelRouting } from "./model-routing.js";
@@ -287,14 +291,31 @@ export function applyNativeCursorRouting(
     body.cursor_model_max_mode = routing.requestedMaxMode;
 }
 
+/**
+ * Pi 0.86 folds the prompt and tool list into transcript system messages
+ * (`content` / `sections` / `toolsAdded`). `context.systemPrompt` and
+ * `context.tools` are the pre-normalization shorthand and are empty once
+ * `normalizeContext()` has run. Prefer the transcript, and keep the shorthand
+ * for callers that still pass it directly.
+ */
+export function cursorPromptAndTools(context: Context): { systemPrompt: string; tools: PiTool[] } {
+  const transcriptPrompt = getCurrentSystemPrompt(context.messages);
+  const transcriptTools = getCurrentTools(context.messages);
+  return {
+    systemPrompt: transcriptPrompt || context.systemPrompt || "",
+    tools: transcriptTools.length > 0 ? transcriptTools : (context.tools ?? []),
+  };
+}
+
 export function contextToCursorChatCompletionRequest(
   model: Model<Api>,
   context: Context,
   options: CursorNativeStreamOptions | undefined,
   config: CursorNativeStreamConfig,
 ): ChatCompletionRequest {
+  const { systemPrompt, tools } = cursorPromptAndTools(context);
   const messages: OpenAIMessage[] = [];
-  if (context.systemPrompt) messages.push({ role: "system", content: context.systemPrompt });
+  if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
 
   for (const [index, message] of context.messages.entries()) {
     if (message.role === "user") {
@@ -335,7 +356,7 @@ export function contextToCursorChatCompletionRequest(
     model: model.id,
     messages,
     stream: true,
-    tools: (context.tools ?? []).map(piToolToOpenAI),
+    tools: tools.map(piToolToOpenAI),
     tool_choice: options?.toolChoice,
     reasoning_effort: resolveNativeReasoningEffort(
       model,

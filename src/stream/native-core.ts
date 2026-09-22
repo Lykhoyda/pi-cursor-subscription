@@ -36,7 +36,7 @@ export type {
   CursorParameterizedVariant,
 } from "../client/cursor-wire.js";
 
-import { processServerMessage } from "./server-messages.js";
+import { processServerMessage, warnIfNoExecSurface } from "./server-messages.js";
 import { createThinkingTagFilter } from "./thinking-filter.js";
 import {
   contextToCursorChatCompletionRequest,
@@ -474,6 +474,7 @@ async function handleCursorNativeRequest(
     userImages.length === 0 &&
     isTrivialConversationalTurn(userText);
   const selectedTools = omitToolsForTrivialTurn ? [] : toolResolution.tools;
+  warnIfNoExecSurface(selectedTools.length, omitToolsForTrivialTurn);
   // Greetings do not need Pi's large agent prompt: sending it can cost tens of
   // thousands of input tokens before the user text is even considered. Keep the
   // full prompt for anything actionable, for identity/capability questions the
@@ -808,6 +809,7 @@ async function handleCursorNativeRequest(
     bridgeKey: bridgeKeyPrefix(bridgeKey),
     convKey,
     modelId,
+    toolNames: selectedTools.map((tool) => tool.function.name),
     ...size,
   });
 

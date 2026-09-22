@@ -53,6 +53,7 @@
     "smoke:stream": "bun scripts/smoke-stream.mjs",
     "smoke:wire": "bun scripts/smoke-wire.mjs",
     "smoke:pi-grok": "bun scripts/smoke-pi-grok.ts",
+    "smoke:pi-firstmate": "bun scripts/smoke-pi-firstmate.ts",
     "check": "bun run typecheck && bun run lint && bun run security-check && bun run proto:check && bun run test && bun run test:legacy",
     "changeset": "changeset",
     "changeset:version": "changeset version"
