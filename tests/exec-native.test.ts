@@ -124,6 +124,40 @@ describe("native exec handlers", () => {
     ).toContain("native-shell");
   });
 
+  it("returns output for the shell and read commands a firstmate turn runs", async () => {
+    dir = mkdtempSync(path.join(tmpdir(), "pi-cursor-exec-"));
+    process.chdir(dir);
+    writeFileSync(path.join(dir, "e2e.txt"), "pi+firstmate+cursor ok\n");
+
+    // Cursor sends timeoutBehavior 2 (BACKGROUND) for these. The model only
+    // continues if the stream ends with backgrounded, after the output.
+    const commands = [
+      { command: "echo shell-ok", stdout: "shell-ok", stderr: "" },
+      { command: "printf '%s\\n' 'lock: held'", stdout: "lock: held", stderr: "" },
+      { command: "printf '%s\\n' 'WAKE_ACK_REQUIRED' >&2", stdout: "", stderr: "WAKE_ACK_REQUIRED" },
+    ];
+    for (const item of commands) {
+      const events = await shellStreamEvents(item.command, 2);
+      expect(streamText(events, "stdout").trim()).toBe(item.stdout);
+      expect(streamText(events, "stderr").trim()).toBe(item.stderr);
+      expect(events.at(-1)?.case).toBe("backgrounded");
+      expect(events.some((event) => event.case === "exit")).toBe(false);
+    }
+
+    const foreground = await shellStreamEvents("echo foreground");
+    expect(streamText(foreground, "stdout")).toContain("foreground");
+    expect(foreground.at(-1)?.case).toBe("exit");
+
+    const read = dispatchNativeExec("readArgs", { path: "e2e.txt" });
+    expect(read?.kind).toBe("sync");
+    if (read?.kind !== "sync") return;
+    const result = (
+      read.frame.value as { result: { case: string; value: { output?: { value?: string } } } }
+    ).result;
+    expect(result.case).toBe("success");
+    expect(result.value.output?.value).toContain("pi+firstmate+cursor ok");
+  });
+
   it("does not pass secret-looking env vars to the shell", async () => {
     expect(Object.keys(shellEnv({ CURSOR_ACCESS_TOKEN: "x", PATH: "/bin", HOME: "/h" }))).toEqual([
       "PATH",
@@ -285,6 +319,33 @@ describe("native fetch refuses private and internal targets", () => {
     }
   });
 });
+
+interface ShellStreamEvent {
+  case: string;
+  data?: string;
+}
+
+async function shellStreamEvents(command: string, timeoutBehavior?: number): Promise<ShellStreamEvent[]> {
+  const dispatched = dispatchNativeExec("shellStreamArgs", {
+    command,
+    workingDirectory: ".",
+    ...(timeoutBehavior === undefined ? {} : { timeoutBehavior }),
+  });
+  if (dispatched?.kind !== "stream") throw new Error(`expected a shell stream, got ${dispatched?.kind}`);
+  const events: ShellStreamEvent[] = [];
+  await dispatched.run((frame) => {
+    const event = (frame.value as { event: { case: string; value?: { data?: string } } }).event;
+    events.push({ case: event.case, data: event.value?.data });
+  });
+  return events;
+}
+
+function streamText(events: ShellStreamEvent[], channel: "stdout" | "stderr"): string {
+  return events
+    .filter((event) => event.case === channel)
+    .map((event) => event.data ?? "")
+    .join("");
+}
 
 describe("conversation id rotation", () => {
   it("mints a new conversation id and drops the checkpoint", () => {

@@ -10,6 +10,13 @@ import { getCacheDir } from "../utils/cache-dir.js";
 import { getCursorAgentUrl, getCursorClientVersion } from "../stream/config.js";
 import { resolveSystemCredentialPolicy } from "../auth/consent.js";
 import { getLifecycleLogPath } from "../stream/debug-log.js";
+import {
+  formatResolvedTimeout,
+  resolveH2IdleTimeoutMs,
+  resolveResumeIdleTimeoutMs,
+  resolveStreamIdleMaxRetries,
+  resolveStreamIdleTimeoutMs,
+} from "../stream/tuning.js";
 import { redactSecrets } from "../utils/security.js";
 import { formatCursorUsage, getCursorUsageSummary } from "../usage.js";
 import { ProviderConstant, type CredentialSource } from "../types/enums.js";
@@ -126,10 +133,22 @@ export function registerCursorCommands(pi: ExtensionAPI, options: CursorCommandO
         `lastIdleTimeoutAt=${d.lastIdleTimeoutAt || "none"}`,
         `lastIdleTimeoutMs=${d.lastIdleTimeoutMs ?? "none"}`,
         `lastIdleAttempt=${d.lastIdleAttempt ?? "none"}`,
-        `streamIdleTimeoutMs=${process.env.PI_CURSOR_STREAM_IDLE_TIMEOUT_MS || "0(disabled)"}`,
-        `resumeIdleTimeoutMs=${process.env.PI_CURSOR_RESUME_IDLE_TIMEOUT_MS || "0(disabled)"}`,
-        `streamIdleMaxRetries=${process.env.PI_CURSOR_STREAM_IDLE_MAX_RETRIES || "0(disabled)"}`,
-        `h2IdleTimeoutMs=${process.env.PI_CURSOR_H2_IDLE_TIMEOUT_MS || "0(disabled)"}`,
+        `streamIdleTimeoutMs=${formatResolvedTimeout(
+          resolveStreamIdleTimeoutMs(process.env.PI_CURSOR_STREAM_IDLE_TIMEOUT_MS),
+          process.env.PI_CURSOR_STREAM_IDLE_TIMEOUT_MS,
+        )}`,
+        `resumeIdleTimeoutMs=${formatResolvedTimeout(
+          resolveResumeIdleTimeoutMs(process.env.PI_CURSOR_RESUME_IDLE_TIMEOUT_MS),
+          process.env.PI_CURSOR_RESUME_IDLE_TIMEOUT_MS,
+        )}`,
+        `streamIdleMaxRetries=${formatResolvedTimeout(
+          resolveStreamIdleMaxRetries(process.env.PI_CURSOR_STREAM_IDLE_MAX_RETRIES),
+          process.env.PI_CURSOR_STREAM_IDLE_MAX_RETRIES,
+        )}`,
+        `h2IdleTimeoutMs=${formatResolvedTimeout(
+          resolveH2IdleTimeoutMs(process.env.PI_CURSOR_H2_IDLE_TIMEOUT_MS),
+          process.env.PI_CURSOR_H2_IDLE_TIMEOUT_MS,
+        )}`,
         `lifecycleLog=${getLifecycleLogPath()}`,
         `lastError=${d.error ? redactSecrets(d.error) : "none"}`,
         "transport=native-streamSimple",

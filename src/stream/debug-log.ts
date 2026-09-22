@@ -11,7 +11,7 @@
  * binary/image data, and redacts access tokens.
  */
 import { createHash } from "node:crypto";
-import { appendFile } from "node:fs";
+import { appendFile, appendFileSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 
 import { getCacheDir } from "../utils/cache-dir.js";
@@ -230,12 +230,33 @@ export function lifecycleLog(event: string, data?: Record<string, unknown>): voi
     const encodedBytes = Buffer.byteLength(line) + 1;
     if (lifecycleBytesWritten + encodedBytes > MAX_LIFECYCLE_LOG_BYTES) return;
     lifecycleBytesWritten += encodedBytes;
-    appendFile(getLifecycleLogPath(), `${line}\n`, { encoding: "utf8", mode: 0o600 }, () => {});
+    // Synchronous so a bridge_close is on disk before the process exits. An
+    // async append dropped the last line of a turn that ended immediately.
+    appendFileSync(getLifecycleLogPath(), `${line}\n`, { encoding: "utf8", mode: 0o600 });
   } catch {
     // Never throw from diagnostics.
   }
   // Also mirror into verbose debug log when enabled.
   debugLog(`lifecycle.${event}`, data);
+}
+
+/** Every stream_start in a lifecycle log must have a later bridge_close. */
+export function bridgeCloseGaps(lifecycleText: string): { started: number; open: string[] } {
+  const started: string[] = [];
+  const closed = new Set<string>();
+  for (const line of lifecycleText.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const event = JSON.parse(trimmed) as { event?: string; requestId?: string };
+      if (typeof event.requestId !== "string") continue;
+      if (event.event === "stream_start") started.push(event.requestId);
+      if (event.event === "bridge_close") closed.add(event.requestId);
+    } catch {
+      // A torn final line is not a bridge lifecycle event.
+    }
+  }
+  return { started: started.length, open: started.filter((id) => !closed.has(id)) };
 }
 
 export type MetricEmitter = (event: string, data: Record<string, unknown>) => void;

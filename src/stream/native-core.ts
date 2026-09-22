@@ -36,7 +36,11 @@ export type {
   CursorParameterizedVariant,
 } from "../client/cursor-wire.js";
 
-import { processServerMessage, warnIfNoExecSurface } from "./server-messages.js";
+import {
+  type NativeExecAbort,
+  processServerMessage,
+  warnIfNoExecSurface,
+} from "./server-messages.js";
 import { createThinkingTagFilter } from "./thinking-filter.js";
 import {
   contextToCursorChatCompletionRequest,
@@ -915,11 +919,20 @@ function writeNativeStream(
   // Completed turns are fixed for the life of a stream, so this is hashed at most once.
   const historyFingerprint = () =>
     (cachedHistoryFingerprint ??= fingerprintCompletedTurns(completedTurns));
+  let nativeExecController = new AbortController();
+  const nativeExecAbort: NativeExecAbort = {
+    signal: () => nativeExecController.signal,
+    abort: () => {
+      nativeExecController.abort();
+      nativeExecController = new AbortController();
+    },
+  };
   const idleWatchdog = createStreamIdleWatchdog({
     timeoutMs: streamIdleTimeoutMs,
     onTimeout: () => {
       if (cancelled || writer.closed) return;
       cancelled = true;
+      nativeExecAbort.abort();
       idleWatchdog.clear();
       const attempt = idleRetry?.currentAttempt ?? 1;
       const maxRetries = idleRetry?.maxRetries ?? 0;
@@ -945,6 +958,14 @@ function writeNativeStream(
         timeoutMs: parkedExecCase === undefined ? streamIdleTimeoutMs : parkTimeoutMs,
         attempt,
         event: parkedExecCase === undefined ? "idle_timeout" : "park_timeout",
+      });
+      lifecycleLog("idle_timeout", {
+        requestId,
+        bridgeKey: bridgeKeyPrefix(bridgeKey),
+        convKey,
+        timeoutMs: parkedExecCase === undefined ? streamIdleTimeoutMs : parkTimeoutMs,
+        attempt,
+        parked: parkedExecCase !== undefined,
       });
       persistAbortedConversationState(
         convKey,
@@ -1044,6 +1065,7 @@ function writeNativeStream(
   const abort = () => {
     if (cancelled || writer.closed) return;
     cancelled = true;
+    nativeExecAbort.abort();
     persistAbortedConversationState(
       convKey,
       checkpointRef.current,
@@ -1240,13 +1262,12 @@ function writeNativeStream(
             idleWatchdog.setTimeoutMs(parkTimeoutMs);
             idleWatchdog.reset();
           },
-          (work) => {
-            idleWatchdog.pause();
-            void work.finally(() => {
-              if (!cancelled && !writer.closed) idleWatchdog.resume();
-            });
-          },
+          // Native shell and fetch are time-bounded. Pausing the silence watchdog
+          // for them let a shell whose stdio never closed leave the bridge open
+          // with no timeout and no bridge_close (issue #30).
+          undefined,
           convKey,
+          nativeExecAbort,
         );
         if (progress === "work") {
           if (parkedExecCase !== undefined) {
@@ -1262,6 +1283,7 @@ function writeNativeStream(
         debugLog("native.stream.process_error", { requestId, message });
         if (!cancelled) {
           cancelled = true;
+          nativeExecAbort.abort();
           idleWatchdog.clear();
           options?.signal?.removeEventListener("abort", abort);
           cleanupBridge(bridge, heartbeatTimer, bridgeKey);

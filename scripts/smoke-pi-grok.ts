@@ -4,7 +4,8 @@
  * Proves the whole path a user exercises — `pi` loads `dist/index.js`, the extension
  * registers the `cursor` provider, `--model` resolves to a real Cursor Grok variant
  * (4.7 when the account lists it, otherwise 4.6), and a trivial prompt streams a
- * non-empty reply back through pi's JSON event stream.
+ * non-empty reply back through pi's JSON event stream. The lifecycle log must show
+ * a `bridge_close` for every `stream_start`.
  *
  * Usage: bun run smoke:pi-grok
  *
@@ -20,13 +21,15 @@
  *   PI_BIN                   explicit pi executable (default: `pi` on PATH, then node_modules/.bin/pi)
  */
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getStartupCursorAccessToken } from "../src/extension/auth.js";
 import { augmentCursorModels } from "../src/models/parameterized.js";
 import { processModels, type ProcessedModel } from "../src/models/processing.js";
+import { bridgeCloseGaps } from "../src/stream/debug-log.js";
 import { discoverCursorCatalog } from "../src/stream/native-core.js";
 import type { PiThinkingLevel } from "../src/types/enums.js";
 import { redactSecrets } from "../src/utils/security.js";
@@ -280,8 +283,14 @@ async function runPi({ model, thinking }: Selection): Promise<void> {
   ];
   log("pi", `prompt="${prompt}" timeout=${timeoutMs}ms`);
 
+  const sandbox = mkdtempSync(join(tmpdir(), "pi-cursor-grok-"));
+  const lifecycleLog = join(sandbox, "lifecycle.jsonl");
   const startedAt = Date.now();
-  const result = await run(piBin, args, timeoutMs);
+  const result = await run(piBin, args, timeoutMs, {
+    env: { ...process.env, PI_CURSOR_LIFECYCLE_LOG: lifecycleLog },
+  });
+  const lifecycleText = existsSync(lifecycleLog) ? readFileSync(lifecycleLog, "utf8") : "";
+  rmSync(sandbox, { recursive: true, force: true });
   const elapsedMs = Date.now() - startedAt;
 
   if (result.timedOut) fail("pi", `no completion within ${timeoutMs}ms`, result.stderr);
@@ -325,6 +334,12 @@ async function runPi({ model, thinking }: Selection): Promise<void> {
   if (!/pong/i.test(summary.finalText)) {
     log("reply", "note: reply did not contain the requested word; streaming still verified");
   }
+  const gaps = bridgeCloseGaps(lifecycleText);
+  if (gaps.started === 0) fail("lifecycle", "no stream_start in the lifecycle log");
+  if (gaps.open.length > 0) {
+    fail("lifecycle", `bridge never closed for ${gaps.open.join(", ")}`);
+  }
+  log("lifecycle", `streams=${gaps.started} all closed`);
 }
 
 if (import.meta.main) {
