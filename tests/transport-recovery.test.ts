@@ -629,29 +629,31 @@ describe("completed-turn connection close", () => {
       idleMs,
     );
 
-    const workAt = Date.now();
-    onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }));
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) }));
-    const beatAt = Date.now();
-    // The beat has to land inside the window work just opened, or it must not postpone anything.
-    expect(beatAt - workAt).toBeLessThan(idleMs);
+    try {
+      onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }));
+      const workAt = Date.now();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) }));
+      const beatAt = Date.now();
+      // The beat has to land inside the window work just opened, or it must not postpone anything.
+      expect(beatAt - workAt).toBeLessThan(idleMs);
 
-    const originalDeadline = workAt + idleMs;
-    const postponedUntil = beatAt + idleMs;
-    // Midway: after the deadline work armed, before the one this heartbeat postponed.
-    const sampleAt = originalDeadline + Math.floor((postponedUntil - originalDeadline) / 2);
-    expect(sampleAt).toBeGreaterThan(originalDeadline);
-    expect(sampleAt).toBeLessThan(postponedUntil);
-    const waitMs = sampleAt - Date.now();
-    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+      const originalDeadline = workAt + idleMs;
+      const postponedUntil = beatAt + idleMs;
+      // Midway: after the deadline work armed, before the one this heartbeat postponed.
+      const sampleAt = originalDeadline + Math.floor((postponedUntil - originalDeadline) / 2);
+      expect(sampleAt).toBeGreaterThan(originalDeadline);
+      expect(sampleAt).toBeLessThan(postponedUntil);
+      const waitMs = sampleAt - Date.now();
+      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
 
-    expect(Date.now()).toBeLessThan(postponedUntil);
-    expect(calls).toEqual([]);
-    expect(writer.closed).toBe(false);
-
-    controller.abort();
-    clearInterval(heartbeatTimer);
+      expect(Date.now()).toBeLessThan(postponedUntil);
+      expect(calls).toEqual([]);
+      expect(writer.closed).toBe(false);
+    } finally {
+      controller.abort();
+      clearInterval(heartbeatTimer);
+    }
   });
 
   it("keeps a turn alive while real work keeps arriving between heartbeats", async () => {
