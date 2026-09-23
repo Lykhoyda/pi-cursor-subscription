@@ -577,6 +577,80 @@ describe("completed-turn connection close", () => {
     expect(calls[0]).toMatch(/^error:Cursor stream idle timeout after 40ms/);
   });
 
+  it("a heartbeat inside the idle window postpones expiration", async () => {
+    const calls: string[] = [];
+    const writer = {
+      output: {} as never,
+      closed: false,
+      start() {},
+      text() {},
+      thinking() {},
+      toolCall() {},
+      done(reason: string) {
+        calls.push(`done:${reason}`);
+        this.closed = true;
+      },
+      error(message: string) {
+        calls.push(`error:${message}`);
+        this.closed = true;
+      },
+    };
+    let onData: (chunk: Buffer) => void = () => {};
+    const bridge = {
+      proc: { kill: () => true },
+      alive: true,
+      lastStderr: () => "",
+      write: () => {},
+      end: () => {},
+      onData: (cb: (chunk: Buffer) => void) => {
+        onData = cb;
+      },
+      onClose: () => {},
+    };
+    const heartbeatTimer = setInterval(() => {}, 60_000);
+    const controller = new AbortController();
+    const idleMs = 1_000;
+
+    __testInternals.writeNativeStream(
+      bridge,
+      heartbeatTimer,
+      new Map(),
+      [],
+      {} as never,
+      "grok-4.7",
+      "bridge-grace",
+      "conv-grace",
+      [],
+      { userText: "hi", steps: [] },
+      writer as never,
+      { signal: controller.signal } as never,
+      "req-grace",
+      undefined,
+      idleMs,
+    );
+
+    const workAt = Date.now();
+    onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) }));
+    const beatAt = Date.now();
+    // The beat has to land inside the window work just opened, or it must not postpone anything.
+    expect(beatAt - workAt).toBeLessThan(idleMs);
+
+    const sampleAt = workAt + idleMs + 50;
+    const postponedUntil = beatAt + idleMs;
+    expect(sampleAt).toBeLessThan(postponedUntil);
+    const waitMs = sampleAt - Date.now();
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+    expect(Date.now()).toBeLessThan(postponedUntil);
+    expect(calls).toEqual([]);
+    expect(writer.closed).toBe(false);
+
+    controller.abort();
+    clearInterval(heartbeatTimer);
+  });
+
   it("keeps a turn alive while real work keeps arriving between heartbeats", async () => {
     const calls: string[] = [];
     const writer = {
