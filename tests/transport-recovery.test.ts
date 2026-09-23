@@ -513,6 +513,214 @@ describe("completed-turn connection close", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatch(/^error:Cursor parked the turn on exec case/);
   });
+
+  it("fails a turn whose server only heartbeats after its last real work (issue #30)", async () => {
+    const calls: string[] = [];
+    const writer = {
+      output: {} as never,
+      closed: false,
+      start() {},
+      text() {},
+      thinking() {},
+      toolCall() {},
+      done(reason: string) {
+        calls.push(`done:${reason}`);
+        this.closed = true;
+      },
+      error(message: string) {
+        calls.push(`error:${message}`);
+        this.closed = true;
+      },
+    };
+    let onData: (chunk: Buffer) => void = () => {};
+    const bridge = {
+      proc: { kill: () => true },
+      alive: true,
+      lastStderr: () => "",
+      write: () => {},
+      end: () => {},
+      onData: (cb: (chunk: Buffer) => void) => {
+        onData = cb;
+      },
+      onClose: () => {},
+    };
+    const heartbeatTimer = setInterval(() => {}, 60_000);
+
+    __testInternals.writeNativeStream(
+      bridge,
+      heartbeatTimer,
+      new Map(),
+      [],
+      {} as never,
+      "grok-4.7",
+      "bridge-silent",
+      "conv-silent",
+      [],
+      { userText: "hi", steps: [] },
+      writer as never,
+      undefined,
+      "req-silent",
+      undefined,
+      40,
+    );
+
+    onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }));
+    const beats = setInterval(
+      () => onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) })),
+      10,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    clearInterval(beats);
+    clearInterval(heartbeatTimer);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatch(/^error:Cursor stream idle timeout after 40ms/);
+  });
+
+  it("a heartbeat inside the idle window postpones expiration", async () => {
+    const calls: string[] = [];
+    const writer = {
+      output: {} as never,
+      closed: false,
+      start() {},
+      text() {},
+      thinking() {},
+      toolCall() {},
+      done(reason: string) {
+        calls.push(`done:${reason}`);
+        this.closed = true;
+      },
+      error(message: string) {
+        calls.push(`error:${message}`);
+        this.closed = true;
+      },
+    };
+    let onData: (chunk: Buffer) => void = () => {};
+    const bridge = {
+      proc: { kill: () => true },
+      alive: true,
+      lastStderr: () => "",
+      write: () => {},
+      end: () => {},
+      onData: (cb: (chunk: Buffer) => void) => {
+        onData = cb;
+      },
+      onClose: () => {},
+    };
+    const heartbeatTimer = setInterval(() => {}, 60_000);
+    const controller = new AbortController();
+    const idleMs = 1_000;
+
+    try {
+      __testInternals.writeNativeStream(
+        bridge,
+        heartbeatTimer,
+        new Map(),
+        [],
+        {} as never,
+        "grok-4.7",
+        "bridge-grace",
+        "conv-grace",
+        [],
+        { userText: "hi", steps: [] },
+        writer as never,
+        { signal: controller.signal } as never,
+        "req-grace",
+        undefined,
+        idleMs,
+      );
+
+      onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }));
+      const workAt = Date.now();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) }));
+      const beatAt = Date.now();
+      // The beat has to land inside the window work just opened, or it must not postpone anything.
+      expect(beatAt - workAt).toBeLessThan(idleMs);
+
+      const originalDeadline = workAt + idleMs;
+      const postponedUntil = beatAt + idleMs;
+      // Midway: after the deadline work armed, before the one this heartbeat postponed.
+      const sampleAt = originalDeadline + Math.floor((postponedUntil - originalDeadline) / 2);
+      expect(sampleAt).toBeGreaterThan(originalDeadline);
+      expect(sampleAt).toBeLessThan(postponedUntil);
+      const waitMs = sampleAt - Date.now();
+      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+      expect(Date.now()).toBeLessThan(postponedUntil);
+      expect(calls).toEqual([]);
+      expect(writer.closed).toBe(false);
+    } finally {
+      controller.abort();
+      clearInterval(heartbeatTimer);
+    }
+  });
+
+  it("keeps a turn alive while real work keeps arriving between heartbeats", async () => {
+    const calls: string[] = [];
+    const writer = {
+      output: {} as never,
+      closed: false,
+      start() {},
+      text() {},
+      thinking() {},
+      toolCall() {},
+      done(reason: string) {
+        calls.push(`done:${reason}`);
+        this.closed = true;
+      },
+      error(message: string) {
+        calls.push(`error:${message}`);
+        this.closed = true;
+      },
+    };
+    let onData: (chunk: Buffer) => void = () => {};
+    const bridge = {
+      proc: { kill: () => true },
+      alive: true,
+      lastStderr: () => "",
+      write: () => {},
+      end: () => {},
+      onData: (cb: (chunk: Buffer) => void) => {
+        onData = cb;
+      },
+      onClose: () => {},
+    };
+    const heartbeatTimer = setInterval(() => {}, 60_000);
+
+    __testInternals.writeNativeStream(
+      bridge,
+      heartbeatTimer,
+      new Map(),
+      [],
+      {} as never,
+      "grok-4.7",
+      "bridge-busy",
+      "conv-busy",
+      [],
+      { userText: "hi", steps: [] },
+      writer as never,
+      undefined,
+      "req-busy",
+      undefined,
+      40,
+    );
+
+    let tick = 0;
+    const traffic = setInterval(() => {
+      tick += 1;
+      if (tick % 3 === 0) {
+        onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "." }) }));
+      } else {
+        onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) }));
+      }
+    }, 10);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    clearInterval(traffic);
+    clearInterval(heartbeatTimer);
+
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("idle HTTP/2 bridge reuse", () => {

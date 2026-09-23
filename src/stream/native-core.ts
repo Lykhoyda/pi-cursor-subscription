@@ -912,6 +912,8 @@ function writeNativeStream(
   // it will never recognize, so heartbeats stop counting as progress and the watchdog
   // switches to the shorter park deadline until real work resumes.
   let parkedExecCase: string | undefined;
+  // Heartbeats may extend a work-less stretch by at most one more idle window (issue #30).
+  let lastWorkAt = Date.now();
   // A park deadline can only be shorter than the silence deadline, and an explicitly
   // disabled watchdog stays disabled.
   const parkTimeoutMs =
@@ -1274,8 +1276,13 @@ function writeNativeStream(
             parkedExecCase = undefined;
             idleWatchdog.setTimeoutMs(streamIdleTimeoutMs);
           }
+          lastWorkAt = Date.now();
           idleWatchdog.reset();
-        } else if (progress === "liveness" && parkedExecCase === undefined) {
+        } else if (
+          progress === "liveness" &&
+          parkedExecCase === undefined &&
+          Date.now() - lastWorkAt < streamIdleTimeoutMs
+        ) {
           idleWatchdog.reset();
         }
       } catch (err) {
