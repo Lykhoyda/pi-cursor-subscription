@@ -611,25 +611,25 @@ describe("completed-turn connection close", () => {
     const controller = new AbortController();
     const idleMs = 1_000;
 
-    __testInternals.writeNativeStream(
-      bridge,
-      heartbeatTimer,
-      new Map(),
-      [],
-      {} as never,
-      "grok-4.7",
-      "bridge-grace",
-      "conv-grace",
-      [],
-      { userText: "hi", steps: [] },
-      writer as never,
-      { signal: controller.signal } as never,
-      "req-grace",
-      undefined,
-      idleMs,
-    );
-
     try {
+      __testInternals.writeNativeStream(
+        bridge,
+        heartbeatTimer,
+        new Map(),
+        [],
+        {} as never,
+        "grok-4.7",
+        "bridge-grace",
+        "conv-grace",
+        [],
+        { userText: "hi", steps: [] },
+        writer as never,
+        { signal: controller.signal } as never,
+        "req-grace",
+        undefined,
+        idleMs,
+      );
+
       onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }));
       const workAt = Date.now();
       await new Promise((resolve) => setTimeout(resolve, 400));
