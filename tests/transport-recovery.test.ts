@@ -637,8 +637,11 @@ describe("completed-turn connection close", () => {
     // The beat has to land inside the window work just opened, or it must not postpone anything.
     expect(beatAt - workAt).toBeLessThan(idleMs);
 
-    const sampleAt = workAt + idleMs + 50;
+    const originalDeadline = workAt + idleMs;
     const postponedUntil = beatAt + idleMs;
+    // Midway: after the deadline work armed, before the one this heartbeat postponed.
+    const sampleAt = originalDeadline + Math.floor((postponedUntil - originalDeadline) / 2);
+    expect(sampleAt).toBeGreaterThan(originalDeadline);
     expect(sampleAt).toBeLessThan(postponedUntil);
     const waitMs = sampleAt - Date.now();
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
