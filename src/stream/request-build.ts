@@ -55,6 +55,7 @@ export {
   isSlimToolsEnabled,
   slimOpenAIToolsForCursor,
 } from "./tool-schema.js";
+import { PI_MCP_PROVIDER } from "./tool-schema.js";
 import type {
   CursorRequestPayload,
   OpenAIToolDef,
@@ -380,7 +381,7 @@ export function buildTurnStepBytes(step: ParsedTurnStep): Uint8Array {
       name: toolName,
       args: encodeMcpArgsMap(step.arguments),
       toolCallId: step.toolCallId,
-      providerIdentifier: "pi",
+      providerIdentifier: PI_MCP_PROVIDER,
       toolName,
     }),
     ...(step.result && {

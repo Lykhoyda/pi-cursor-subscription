@@ -1,9 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import { fromBinary } from "@bufbuild/protobuf";
+import { create, fromBinary } from "@bufbuild/protobuf";
 import {
   AgentClientMessageSchema,
   type ExecClientControlMessage,
+  type ExecClientMessage,
   type ExecClientThrow,
+  ExecServerMessageSchema,
+  type McpStateExecArgs,
+  McpStateExecArgsSchema,
+  type McpStateExecResult,
+  type McpStateSuccess,
+  SubagentArgsSchema,
+  type SubagentError,
+  type SubagentResult,
 } from "../src/proto/agent_pb.js";
 import {
   MAX_MCP_TOOL_RESULT_BYTES,
@@ -196,6 +205,85 @@ describe("native Cursor exec steering", () => {
         $unknown: [{ no: 28, wireType: 2, data: new Uint8Array(9) }],
       }),
     ).toBe("28:wt2:9b");
+  });
+
+  const loggedMcpStateForPi = Uint8Array.of(0x08, 0x0d, 0xa2, 0x02, 0x04, 0x0a, 0x02, 0x70, 0x69);
+  const loggedMcpStateForAll = Uint8Array.of(0x08, 0x0d, 0xa2, 0x02, 0x00);
+
+  function answerExec(execMsg: unknown, mcpTools: ReturnType<typeof buildMcpToolDefinitions>) {
+    const frames: Uint8Array[] = [];
+    const handled = serverMessageInternals.handleExecMessageInner(
+      execMsg as never,
+      mcpTools,
+      (frame: Uint8Array) => frames.push(frame),
+      () => {
+        throw new Error("should not execute");
+      },
+    );
+    expect(frames).toHaveLength(1);
+    const answer = fromBinary(AgentClientMessageSchema, frames[0]!.subarray(5));
+    expect(answer.message.case).toBe("execClientMessage");
+    return { handled, reply: answer.message.value as ExecClientMessage };
+  }
+
+  it("decodes Cursor's MCP state exec (field 36) instead of leaving it unknown", () => {
+    const forPi = fromBinary(ExecServerMessageSchema, loggedMcpStateForPi);
+    expect(forPi.message.case).toBe("mcpStateExecArgs");
+    expect((forPi.message.value as McpStateExecArgs).serverIdentifiers).toEqual(["pi"]);
+    expect(forPi.$unknown ?? []).toHaveLength(0);
+
+    const forAll = fromBinary(ExecServerMessageSchema, loggedMcpStateForAll);
+    expect(forAll.message.case).toBe("mcpStateExecArgs");
+    expect((forAll.message.value as McpStateExecArgs).serverIdentifiers).toEqual([]);
+    expect(forAll.$unknown ?? []).toHaveLength(0);
+  });
+
+  it("answers MCP state with Pi's server and its tools", () => {
+    const mcpTools = buildMcpToolDefinitions([
+      {
+        type: "function",
+        function: { name: "read", description: "Read a file", parameters: { type: "object" } },
+      },
+    ]);
+    const servers = (execMsg: unknown) => {
+      const { handled, reply } = answerExec(execMsg, mcpTools);
+      expect(handled).toBe(true);
+      expect(reply.message.case).toBe("mcpStateExecResult");
+      const result = (reply.message.value as McpStateExecResult).result;
+      expect(result.case).toBe("success");
+      return (result.value as McpStateSuccess).servers;
+    };
+
+    for (const bytes of [loggedMcpStateForPi, loggedMcpStateForAll]) {
+      const listed = servers(fromBinary(ExecServerMessageSchema, bytes));
+      expect(listed).toHaveLength(1);
+      expect(listed[0]!.serverIdentifier).toBe("pi");
+      expect(listed[0]!.tools.map((tool) => tool.name)).toEqual(mcpTools.map((tool) => tool.name));
+    }
+
+    const forOther = create(ExecServerMessageSchema, {
+      id: 13,
+      execId: "exec-13",
+      message: {
+        case: "mcpStateExecArgs",
+        value: create(McpStateExecArgsSchema, { serverIdentifiers: ["other"] }),
+      },
+    });
+    expect(servers(forOther)).toEqual([]);
+  });
+
+  it("rejects a Cursor subagent exec (field 28) with a typed error", () => {
+    const execMsg = create(ExecServerMessageSchema, {
+      id: 14,
+      execId: "exec-14",
+      message: { case: "subagentArgs", value: create(SubagentArgsSchema, { toolCallId: "t" }) },
+    });
+    const { handled, reply } = answerExec(execMsg, []);
+    expect(handled).toBe(true);
+    expect(reply.message.case).toBe("subagentResult");
+    const result = (reply.message.value as SubagentResult).result;
+    expect(result.case).toBe("error");
+    expect((result.value as SubagentError).error).not.toBe("");
   });
 });
 
