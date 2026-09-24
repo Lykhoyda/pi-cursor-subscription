@@ -48,6 +48,8 @@ pi update git:github.com/Lykhoyda/pi-cursor-subscription
 
 On the open Run RPC, Cursor-native **`shell`**, **`fetch`**, **`write`**, and **`delete`** run by default, so a session with no Pi MCP tools can still act. **Read**, **ls**, and **grep** also run on the native exec channel.
 
+Cursor can discover Pi's MCP tools, but Pi does not support Cursor subagents; those requests return an explicit error. See the [exec protocol details](docs/protocol.md#cursor-exec-requests).
+
 Native `fetch` refuses loopback, private-network, link-local / cloud-metadata, and other internal addresses, including via redirects.
 
 Native `shell` runs **unconfined** as your user (only its starting directory is workspace-checked); secret-named env vars are stripped from the child and zeroed in Pi's own inspectable environment. See [SECURITY.md](SECURITY.md#privileged-native-exec). Run Pi in a container or VM if that risk is unacceptable.

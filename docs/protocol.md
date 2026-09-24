@@ -62,6 +62,10 @@ To prevent Cursor models from being derailed by side-channel injections:
 - **Response:** Streaming binary Connect frames parsed via `@bufbuild/protobuf` `fromBinary()`.
 - **Idle safety net:** Connect timeout defaults to 30s (handshake only). **Activity idle is disabled by default** so long agent turns are not killed. Parent heartbeats every 5s reset the activity timer when it is enabled via `PI_CURSOR_H2_IDLE_TIMEOUT_MS`.
 
+## Cursor exec requests
+
+An MCP state request (exec field 36) returns Pi's `pi` server and its advertised MCP tools when Cursor asks for `pi` or all servers. A request naming only other servers returns an empty server list. A subagent request (exec field 28) receives a typed `SubagentResult` error because Pi cannot run Cursor subagents.
+
 ## Stream idle watchdog
 
 `writeNativeStream` arms a silence idle watchdog via `PI_CURSOR_STREAM_IDLE_TIMEOUT_MS`. **Default is `180000` (3 min)**. Set to `0` to disable. The watchdog resets on **work**:
