@@ -13,6 +13,7 @@ exact = false
 
 [test]
 root = "tests"
+preload = ["./tests/preload.ts"]
 coverageSkipTestFiles = true
 coverageReporter = ["text", "lcov"]
 coverageDir = "coverage"

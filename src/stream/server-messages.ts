@@ -31,6 +31,9 @@ import {
   GetBlobResultSchema,
   KvClientMessageSchema,
   McpResultSchema,
+  McpStateExecResultSchema,
+  McpStateServerSchema,
+  McpStateSuccessSchema,
   McpToolNotFoundSchema,
   ReadMcpResourceExecResultSchema,
   ReadMcpResourceRejectedSchema,
@@ -44,6 +47,8 @@ import {
   ShellRejectedSchema,
   ShellResultSchema,
   ShellStreamSchema,
+  SubagentErrorSchema,
+  SubagentResultSchema,
   WritePermissionDeniedSchema,
   WriteResultSchema,
   WriteShellStdinErrorSchema,
@@ -58,6 +63,7 @@ import {
 import { frameConnectMessage } from "../client/bridge.js";
 import { debugLog, lifecycleLog } from "./debug-log.js";
 import { recordDriftSignal, recordUnknownFields } from "./drift.js";
+import { PI_MCP_PROVIDER } from "./tool-schema.js";
 import { dispatchNativeExec, type NativeExecFrame } from "./exec-native.js";
 import { handleInteractionQuery } from "./interaction-query.js";
 import { decodeMcpArgsMap } from "./request-build.js";
@@ -646,6 +652,42 @@ function handleExecMessageInner(
             actionCount: Array.isArray(args.actions) ? args.actions.length : 0,
             durationMs: 0,
           }),
+        },
+      }),
+      sendFrame,
+    );
+    return true;
+  }
+  if (execCase === "mcpStateExecArgs") {
+    const requested: string[] = (execMsg as any).message.value.serverIdentifiers ?? [];
+    const servers =
+      requested.length === 0 || requested.includes(PI_MCP_PROVIDER)
+        ? [
+            create(McpStateServerSchema, {
+              serverName: PI_MCP_PROVIDER,
+              serverIdentifier: PI_MCP_PROVIDER,
+              tools: mcpTools,
+            }),
+          ]
+        : [];
+    sendExecResult(
+      execMsg,
+      "mcpStateExecResult",
+      create(McpStateExecResultSchema, {
+        result: { case: "success", value: create(McpStateSuccessSchema, { servers }) },
+      }),
+      sendFrame,
+    );
+    return true;
+  }
+  if (execCase === "subagentArgs") {
+    sendExecResult(
+      execMsg,
+      "subagentResult",
+      create(SubagentResultSchema, {
+        result: {
+          case: "error",
+          value: create(SubagentErrorSchema, { error: "Cursor subagents are not available in Pi." }),
         },
       }),
       sendFrame,

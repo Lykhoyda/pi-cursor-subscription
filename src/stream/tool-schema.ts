@@ -11,6 +11,8 @@ import { ValueSchema } from "@bufbuild/protobuf/wkt";
 import { McpToolDefinitionSchema, type McpToolDefinition } from "../proto/agent_pb.js";
 import type { OpenAIToolDef } from "./types.js";
 
+export const PI_MCP_PROVIDER = "pi";
+
 /**
  * Whether to truncate verbose tool descriptions/parameter docs before sending
  * them to Cursor. Default ON — full Pi/MCP prose often costs tens of thousands
@@ -172,7 +174,7 @@ export function buildMcpToolDefinitions(tools: OpenAIToolDef[]): McpToolDefiniti
     return create(McpToolDefinitionSchema, {
       name: fn.name,
       description: fn.description || "",
-      providerIdentifier: "pi",
+      providerIdentifier: PI_MCP_PROVIDER,
       toolName: fn.name,
       inputSchema,
     });
