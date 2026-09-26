@@ -1,6 +1,7 @@
 /**
- * Live one-shot stream smoke.
- * Usage: CURSOR_ACCESS_TOKEN=... node --import tsx scripts/smoke-stream.mjs
+ * Live one-shot stream smoke; passes after a nonempty reply and stop completion.
+ * Usage: CURSOR_ACCESS_TOKEN=... bun run smoke:stream
+ * Uses the offered "default" model unless CURSOR_SMOKE_MODEL overrides it.
  */
 import { createCursorNativeStream } from "../src/stream/native-core.ts";
 import { getCursorModels } from "../src/stream/model-discovery.ts";
