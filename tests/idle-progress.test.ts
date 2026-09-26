@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { create, fromBinary } from "@bufbuild/protobuf";
+import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,
+  ConversationStateStructureSchema,
   ExecServerMessageSchema,
   HeartbeatUpdateSchema,
   InteractionUpdateSchema,
@@ -15,6 +16,7 @@ import {
   type ExecClientControlMessage,
   type ExecClientThrow,
 } from "../src/proto/agent_pb.js";
+import { frameConnectMessage } from "../src/client/bridge.js";
 import { processServerMessage } from "../src/stream/server-messages.js";
 import type { StreamState } from "../src/stream/types.js";
 import {
@@ -216,6 +218,37 @@ describe("idle progress classification", () => {
     }
   });
 
+  it("classifies a checkpoint update as liveness, not model work", () => {
+    const message = create(AgentServerMessageSchema, {
+      message: {
+        case: "conversationCheckpointUpdate",
+        value: create(ConversationStateStructureSchema, {}),
+      },
+    });
+    const state: StreamState = {
+      toolCallIndex: 0,
+      pendingExecs: [],
+      outputTokens: 0,
+      totalTokens: 0,
+      turnEnded: false,
+    };
+    const checkpoints: Uint8Array[] = [];
+
+    const progress = processServerMessage(
+      message,
+      new Map(),
+      [],
+      () => {},
+      state,
+      () => {},
+      () => {},
+      (bytes) => checkpoints.push(bytes),
+    );
+
+    expect(progress).toBe("liveness");
+    expect(checkpoints).toHaveLength(1);
+  });
+
   it("requires non-empty text for text/thinking deltas", () => {
     expect(interactionUpdateProgress("textDelta", true)).toBe("work");
     expect(interactionUpdateProgress("textDelta", false)).toBe("none");
@@ -320,6 +353,104 @@ describe("stream idle watchdog", () => {
     clearInterval(interval);
     watchdog.clear();
     expect(fired).toBe(0);
+  });
+});
+
+describe("work-less stream fed only server bookkeeping frames", () => {
+  const frame = (bytes: Uint8Array) => Buffer.from(frameConnectMessage(bytes) as Uint8Array);
+  const checkpointFrame = () =>
+    frame(
+      toBinary(
+        AgentServerMessageSchema,
+        create(AgentServerMessageSchema, {
+          message: {
+            case: "conversationCheckpointUpdate",
+            value: create(ConversationStateStructureSchema, {}),
+          },
+        }),
+      ),
+    );
+  const heartbeatFrame = () =>
+    frame(
+      toBinary(
+        AgentServerMessageSchema,
+        create(AgentServerMessageSchema, {
+          message: {
+            case: "interactionUpdate",
+            value: create(InteractionUpdateSchema, {
+              message: { case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) },
+            }),
+          },
+        }),
+      ),
+    );
+
+  async function drive(frameFn: () => Buffer, idleMs: number, periodMs: number, totalMs: number) {
+    const calls: string[] = [];
+    let onData: (chunk: Buffer) => void = () => {};
+    const bridge = {
+      proc: { kill: () => true },
+      alive: true,
+      lastStderr: () => "",
+      write: () => {},
+      end: () => {},
+      onData: (cb: (chunk: Buffer) => void) => {
+        onData = cb;
+      },
+      onClose: () => {},
+    };
+    const writer = {
+      output: {} as never,
+      closed: false,
+      start() {},
+      text() {},
+      thinking() {},
+      toolCall() {},
+      done(reason: string) {
+        calls.push(`done:${reason}`);
+        this.closed = true;
+      },
+      error(message: string) {
+        calls.push(`error:${message}`);
+        this.closed = true;
+      },
+    };
+    const heartbeatTimer = setInterval(() => {}, 60_000);
+    __testInternals.writeNativeStream(
+      bridge as never,
+      heartbeatTimer,
+      new Map(),
+      [],
+      {} as never,
+      "default",
+      "bridge-wd",
+      "conv-wd",
+      [],
+      { userText: "hi", steps: [] },
+      writer as never,
+      undefined,
+      "req-wd",
+      undefined,
+      idleMs,
+    );
+    const feed = setInterval(() => onData(frameFn()), periodMs);
+    try {
+      await Bun.sleep(totalMs);
+    } finally {
+      clearInterval(feed);
+      clearInterval(heartbeatTimer);
+    }
+    return calls;
+  }
+
+  it("control: heartbeats alone let the idle watchdog fire within two windows", async () => {
+    const calls = await drive(heartbeatFrame, 150, 30, 700);
+    expect(calls.some((c) => c.includes("idle timeout after 150ms"))).toBe(true);
+  });
+
+  it("checkpoint updates alone must also let the idle watchdog fire within two windows", async () => {
+    const calls = await drive(checkpointFrame, 150, 30, 700);
+    expect(calls.some((c) => c.includes("idle timeout after 150ms"))).toBe(true);
   });
 });
 
