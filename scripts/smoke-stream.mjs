@@ -3,10 +3,24 @@
  * Usage: CURSOR_ACCESS_TOKEN=... node --import tsx scripts/smoke-stream.mjs
  */
 import { createCursorNativeStream } from "../src/stream/native-core.ts";
+import { getCursorModels } from "../src/stream/model-discovery.ts";
 
 const token = process.env.CURSOR_ACCESS_TOKEN?.trim();
 if (!token) {
   console.error("Set CURSOR_ACCESS_TOKEN");
+  process.exit(1);
+}
+
+const modelId = process.env.CURSOR_SMOKE_MODEL || "default";
+const offered = await getCursorModels(token);
+if (offered.length === 0) {
+  console.error("smoke-stream: FAILED — model discovery returned no models");
+  process.exit(1);
+}
+if (!offered.some((m) => m.id === modelId)) {
+  console.error(
+    `smoke-stream: FAILED — model "${modelId}" is not offered to this account (set CURSOR_SMOKE_MODEL)`,
+  );
   process.exit(1);
 }
 
@@ -17,7 +31,7 @@ const streamFn = createCursorNativeStream({
 });
 
 const model = {
-  id: process.env.CURSOR_SMOKE_MODEL || "composer-2",
+  id: modelId,
   name: "smoke",
   provider: "cursor",
   api: "cursor-native",
@@ -36,7 +50,7 @@ const stream = streamFn(
     messages: [{ role: "user", content: "ping", timestamp: Date.now() }],
     tools: [],
   },
-  { temperature: 0, maxTokens: 64 },
+  { maxTokens: 64 },
 );
 
 for await (const event of stream) {
@@ -50,3 +64,5 @@ for await (const event of stream) {
   }
 }
 console.log("smoke-stream: ok");
+// An open HTTP/2 session keeps the event loop alive after the stream finishes.
+process.exit(0);

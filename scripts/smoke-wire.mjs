@@ -9,10 +9,7 @@
  *
  * Usage: CURSOR_ACCESS_TOKEN=... node --import tsx scripts/smoke-wire.mjs
  */
-import { fromBinary } from "@bufbuild/protobuf";
-
-import { GetUsableModelsResponseSchema } from "../src/proto/agent_pb.ts";
-import { callCursorUnaryRpc } from "../src/stream/model-discovery.ts";
+import { callCursorUnaryRpc, decodeUsableModelsResponse } from "../src/stream/model-discovery.ts";
 import { getCursorAgentUrl, getCursorClientVersion } from "../src/stream/config.ts";
 import { getDriftSignals, recordUnknownFields } from "../src/stream/drift.ts";
 import { create, toBinary } from "@bufbuild/protobuf";
@@ -50,14 +47,9 @@ if (exitCode !== 0) {
   process.exit(1);
 }
 
-// Connect unary responses are a 5-byte framed envelope around the message.
-const payload = body.length > 5 ? body.subarray(5) : body;
-
-let response;
-try {
-  response = fromBinary(GetUsableModelsResponseSchema, payload);
-} catch (error) {
-  console.error(`smoke-wire: FAILED — response did not decode with our schema: ${error}`);
+const response = decodeUsableModelsResponse(body);
+if (!response) {
+  console.error("smoke-wire: FAILED — response did not decode with our schema");
   console.error("The agent schema has likely drifted. See proto/README.md.");
   process.exit(1);
 }
