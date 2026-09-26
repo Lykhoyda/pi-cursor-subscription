@@ -14,12 +14,14 @@ mock.module("../src/stream/native-core.ts", () => ({
 
 it("requires an offered model, reply text, and stop completion", async () => {
   const originalToken = process.env.CURSOR_ACCESS_TOKEN;
+  const originalModel = process.env.CURSOR_SMOKE_MODEL;
   const originalExit = process.exit;
   const originalLog = console.log;
   const originalError = console.error;
   const originalWrite = process.stdout.write;
   const output: string[] = [];
   process.env.CURSOR_ACCESS_TOKEN = "test-token";
+  delete process.env.CURSOR_SMOKE_MODEL;
   process.exit = ((code: number) => { throw new Error(`exit:${code}`); }) as typeof process.exit;
   console.log = (...args) => { output.push(args.join(" ")); };
   console.error = (...args) => { output.push(args.join(" ")); };
@@ -56,6 +58,8 @@ it("requires an offered model, reply text, and stop completion", async () => {
   } finally {
     if (originalToken === undefined) delete process.env.CURSOR_ACCESS_TOKEN;
     else process.env.CURSOR_ACCESS_TOKEN = originalToken;
+    if (originalModel === undefined) delete process.env.CURSOR_SMOKE_MODEL;
+    else process.env.CURSOR_SMOKE_MODEL = originalModel;
     process.exit = originalExit;
     console.log = originalLog;
     console.error = originalError;
