@@ -125,18 +125,7 @@ export function resolveH2IdleTimeoutMs(envValue?: string): number {
   return Math.max(5_000, Math.floor(parsed));
 }
 
-/**
- * What a server message says about the stream.
- *
- * `work` is the run moving: tokens, tool calls, answered execs, checkpoints.
- * `liveness` is the connection breathing while the run itself may be stuck —
- * a heartbeat proves the socket, not the turn. `none` is noise.
- *
- * The distinction exists because a park is not silent: Cursor keeps heartbeating
- * a run that is waiting for an exec reply we never sent, which made a
- * silence-only watchdog unable to ever fire (a Grok session sat parked for 90
- * minutes on an unknown exec case in 2026-08).
- */
+/** Work resets the idle window; liveness (heartbeats/checkpoints) extends it once; none is noise. */
 export type StreamProgress = "none" | "liveness" | "work";
 
 /**
