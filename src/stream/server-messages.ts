@@ -269,7 +269,7 @@ export function processServerMessage(
     }
     if (onCheckpoint) {
       onCheckpoint(toBinary(ConversationStateStructureSchema, stateStructure));
-      return "work";
+      return "liveness";
     }
     return "none";
   }
