@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.1
+
+### Patch Changes
+
+- [#36](https://github.com/Lykhoyda/pi-cursor-subscription/pull/36) [`4dae89a`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/4dae89a04ccabd58bf2b91373c98aab0b700fa1d) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - The idle watchdog no longer treats Cursor checkpoint updates as model progress, so a silent turn times out within two idle windows.
+
+- [#32](https://github.com/Lykhoyda/pi-cursor-subscription/pull/32) [`b17ad10`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/b17ad1023dad520fe8a3a254e49c780ce8e9f5d5) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - A Cursor turn that only receives heartbeats now times out instead of hanging with the host stuck on working.
+
+- [#34](https://github.com/Lykhoyda/pi-cursor-subscription/pull/34) [`fe481e2`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/fe481e2d3b6f9d0496d656ac57fb2520510b04f4) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Cursor MCP state requests now return Pi's MCP tools, while unsupported subagent requests return a typed error.
+
 ## 1.6.0
 
 ### Minor Changes
