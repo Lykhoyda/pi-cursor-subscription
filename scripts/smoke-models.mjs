@@ -15,6 +15,10 @@ const [models, parameterized] = await Promise.all([
   getCursorParameterizedModels(token),
 ]);
 console.log("usable models:", models.length);
+if (models.length === 0) {
+  console.error("smoke-models: FAILED — no usable models (token invalid/unauthorized, or discovery failed)");
+  process.exit(1);
+}
 console.log("parameterized models:", parameterized.length);
 console.log(
   models
