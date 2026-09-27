@@ -73,9 +73,9 @@ An MCP state request (exec field 36) returns Pi's `pi` server and its advertised
 - non-empty text/thinking deltas
 - **tokenDelta** (long pure-reasoning turns)
 - handled exec round-trips (MCP tools **and** native-tool rejects)
-- checkpoints, KV blob get/set, handled interaction queries
+- KV blob get/set, handled interaction queries
 
-Heartbeats are **liveness** only: they reset the watchdog while the run is healthy, but not after an exec this build cannot decode. Unknown exec cases are answered with `ExecClientThrow` (by exec id) and switch the watchdog to a 45s park deadline; retry is skipped because the server would re-issue the same exec.
+Heartbeats and checkpoint updates are **liveness** only: they can extend the watchdog by at most one idle window after the last work, but cannot keep a silent turn alive indefinitely. They do not reset it after an exec this build cannot decode. Unknown exec cases are answered with `ExecClientThrow` (by exec id) and switch the watchdog to a 45s park deadline; retry is skipped because the server would re-issue the same exec.
 
 Silent retries (`PI_CURSOR_STREAM_IDLE_MAX_RETRIES`, default `5`) recover from silence and transport loss. Blind full-request restarts are blocked once text/thinking was streamed; checkpoint continuation is still allowed so partial output does not force a hard failure.
 

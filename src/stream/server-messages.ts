@@ -86,18 +86,7 @@ export interface NativeExecAbort {
   abort: () => void;
 }
 
-/**
- * Classifies a server message for the stream idle watchdog.
- *
- * `work` — the run is moving: non-empty `textDelta` / `thinkingDelta`,
- * `tokenDelta` (long reasoning often emits only these for minutes), tool-call
- * events, any answered `execServerMessage` (MCP exec **or** native-tool result),
- * answered interaction queries, KV blob round-trips, checkpoints.
- *
- * `liveness` — a heartbeat. The socket is healthy; the turn may still be parked.
- *
- * `none` — empty deltas, unanswered exec/KV/interaction cases, other noise.
- */
+/** Classifies server messages as work, liveness (heartbeats/checkpoints), or noise for the idle watchdog. */
 export function processServerMessage(
   msg: AgentServerMessage,
   blobStore: Map<string, Uint8Array>,
@@ -269,7 +258,7 @@ export function processServerMessage(
     }
     if (onCheckpoint) {
       onCheckpoint(toBinary(ConversationStateStructureSchema, stateStructure));
-      return "work";
+      return "liveness";
     }
     return "none";
   }
