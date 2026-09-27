@@ -1,17 +1,11 @@
-/**
- * Live model discovery over Connect unary RPCs.
- *
- * Cursor exposes the account's usable models through `GetUsableModels` plus a
- * parameterized-metadata variant. Both run over an in-process HTTP/2 client, just
- * without the bidirectional half, so responses arrive as a single length-prefixed
- * Connect frame that `decodeConnectUnaryBody` unwraps.
- *
- * Results are memoized per access token so a re-login or account switch
- * invalidates the cache without a manual reset.
- */
+// Live model discovery is memoized per access token, so account switches invalidate the cache.
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 
-import { GetUsableModelsRequestSchema, GetUsableModelsResponseSchema } from "../proto/agent_pb.js";
+import {
+  type GetUsableModelsResponse,
+  GetUsableModelsRequestSchema,
+  GetUsableModelsResponseSchema,
+} from "../proto/agent_pb.js";
 import {
   decodeAvailableModelsResponse,
   encodeAvailableModelsRequest,
@@ -174,20 +168,7 @@ export async function getCursorModels(
       signal: options?.signal,
     });
     if (!response.timedOut && response.exitCode === 0 && response.body.length > 0) {
-      let decoded: any = null;
-      try {
-        decoded = fromBinary(GetUsableModelsResponseSchema, response.body);
-      } catch {
-        // Try Connect framing after plain protobuf decode fails.
-        const body = decodeConnectUnaryBody(response.body);
-        if (body) {
-          try {
-            decoded = fromBinary(GetUsableModelsResponseSchema, body);
-          } catch {
-            decoded = null;
-          }
-        }
-      }
+      const decoded = decodeUsableModelsResponse(response.body);
       if (decoded?.models?.length) {
         const models = normalizeCursorModels(decoded.models);
         if (models.length > 0) {
@@ -204,6 +185,21 @@ export async function getCursorModels(
   }
   console.warn("[cursor-provider] Model discovery returned no models");
   return [];
+}
+
+export function decodeUsableModelsResponse(body: Uint8Array): GetUsableModelsResponse | null {
+  try {
+    return fromBinary(GetUsableModelsResponseSchema, body);
+  } catch {
+    // Try Connect framing after plain protobuf decode fails.
+    const framed = decodeConnectUnaryBody(body);
+    if (!framed) return null;
+    try {
+      return fromBinary(GetUsableModelsResponseSchema, framed);
+    } catch {
+      return null;
+    }
+  }
 }
 
 function decodeConnectUnaryBody(payload: Uint8Array): Uint8Array | null {

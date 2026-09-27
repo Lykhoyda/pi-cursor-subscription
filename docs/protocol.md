@@ -26,7 +26,7 @@ https://agentn.us.api5.cursor.sh / https://api2.cursor.sh
 | RPC Path                                                   | Transport        | Description                                                                                     |
 | ---------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------- |
 | `POST /agent.v1.AgentService/Run`                          | HTTP/2 Streaming | Primary conversational RPC. Sends `AgentClientMessage` and streams `AgentServerMessage` frames. |
-| `POST /agent.v1.AgentService/GetUsableModels`              | HTTP/2 Unary     | Model discovery. Returns available account models and capabilities.                             |
+| `POST /agent.v1.AgentService/GetUsableModels`              | HTTP/2 Unary     | Models and capabilities; reply may be plain protobuf or Connect-framed.                          |
 | `POST /aiserver.v1.AiService/AvailableModels`              | HTTP/2 Unary     | Legacy parameterized model discovery.                                                           |
 | `POST /aiserver.v1.DashboardService/GetCurrentPeriodUsage` | HTTP/2 Unary     | Usage quota endpoint. Returns plan spend, percentage used, and reset timestamps.                |
 
