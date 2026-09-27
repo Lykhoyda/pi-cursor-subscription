@@ -55,7 +55,10 @@ bun run smoke:stream  # Smoke test HTTP/2 streaming
 bun run smoke:wire    # Smoke test low-level wire protocol frames
 bun run smoke:pi-grok # End-to-end: pi CLI + this extension + Grok 4.7 (falls back to 4.6) streams a reply (uses the auth cascade; prints credential source only)
 bun run smoke:pi-firstmate # Same path, plus a Firstmate checkout's watcher extension; asserts bash and fm_watch_arm_pi are on the Cursor request
+bun run smoke:gate    # Pre-PR gate: every unattended smoke above, one PASS/FAIL/NOT-RUN verdict per leg
 ```
+
+`smoke:gate` (`scripts/smoke-gate.ts`) runs models, wire, stream, pi-grok and pi-firstmate in sequence, SIGKILLs each at its deadline, and exits 0 (all passed), 1 (a leg failed) or 3 (nothing failed but a leg could not run). A quota-exhausted plan or a `resource_exhausted` refusal reports the Pi legs as NOT-RUN, never PASS; `smoke:auth` is excluded because it needs an interactive sign-in. `.no-mistakes.yaml` runs it as a custom gate after lint (no-mistakes ≥ v1.74.0; gates are read from the default branch only).
 
 `smoke:pi-grok` is the agent-runnable regression check. It prefers a live Grok 4.7 id from the provider catalog and falls back to Grok 4.6, builds `dist/`, runs `pi --print --mode json` with only this extension loaded, and asserts a non-empty streamed reply on `provider=cursor` / `api=cursor-native` plus a `bridge_close` for every `stream_start` in the lifecycle log. Override with `CURSOR_SMOKE_MODEL`, `CURSOR_SMOKE_THINKING`, `CURSOR_SMOKE_PROMPT`, `CURSOR_SMOKE_TIMEOUT_MS`, `PI_BIN`.
 
