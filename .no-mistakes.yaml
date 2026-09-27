@@ -1,0 +1,4 @@
+gates:
+  - name: smoke
+    after: lint
+    command: "bun run smoke:gate"
