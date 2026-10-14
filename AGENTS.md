@@ -48,21 +48,7 @@ bun run check
 
 ### Smoke Testing
 
-```bash
-bun run smoke:auth    # Smoke test authentication resolution
-bun run smoke:models  # Smoke test model discovery RPC
-bun run smoke:stream  # Smoke test HTTP/2 streaming
-bun run smoke:wire    # Smoke test low-level wire protocol frames
-bun run smoke:pi-grok # End-to-end: pi CLI + this extension + Grok 4.7 (falls back to 4.6) streams a reply (uses the auth cascade; prints credential source only)
-bun run smoke:pi-firstmate # Same path, plus a Firstmate checkout's watcher extension; asserts bash and fm_watch_arm_pi are on the Cursor request
-bun run smoke:gate    # Pre-PR gate: every unattended smoke above, one PASS/FAIL/NOT-RUN verdict per leg
-```
-
-`smoke:gate` (`scripts/smoke-gate.ts`) runs models, wire, stream, pi-grok and pi-firstmate in sequence, SIGKILLs each at its deadline, and exits 0 (all passed), 1 (a leg failed) or 3 (nothing failed but a leg could not run). A quota-exhausted plan or a `resource_exhausted` refusal reports the Pi legs as NOT-RUN, never PASS; `smoke:auth` is excluded because it needs an interactive sign-in. `.no-mistakes.yaml` runs it as a custom gate after lint (no-mistakes ≥ v1.74.0; gates are read from the default branch only).
-
-`smoke:pi-grok` is the agent-runnable regression check. It prefers a live Grok 4.7 id from the provider catalog and falls back to Grok 4.6, builds `dist/`, runs `pi --print --mode json` with only this extension loaded, and asserts a non-empty streamed reply on `provider=cursor` / `api=cursor-native` plus a `bridge_close` for every `stream_start` in the lifecycle log. Override with `CURSOR_SMOKE_MODEL`, `CURSOR_SMOKE_THINKING`, `CURSOR_SMOKE_PROMPT`, `CURSOR_SMOKE_TIMEOUT_MS`, `PI_BIN`.
-
-`smoke:pi-firstmate` loads `.pi/extensions/fm-primary-pi-watch.ts` from `CURSOR_SMOKE_FIRSTMATE` and checks the lifecycle log's `toolNames` for `bash` and `fm_watch_arm_pi`. `FM_HOME` is a temp dir, so the smoke does not write Firstmate state into that checkout.
+Before running live smokes or interpreting gate results, read [CONTRIBUTING.md — Smoke testing](CONTRIBUTING.md#smoke-testing) for credential prerequisites, model selection, overrides, and verdict semantics.
 
 ---
 
@@ -114,13 +100,9 @@ src/
 
 ### 3. Authentication Cascade Policy
 
-1. `CURSOR_ACCESS_TOKEN` environment variable
-2. Pi OAuth store (`~/.pi/agent/auth.json` via `/login cursor`)
-3. Cursor CLI / macOS Keychain (`cursor-access-token` / `cursor-refresh-token`)
-4. Cursor IDE local state DB (`globalStorage/state.vscdb` on macOS, Linux, Windows, or WSL — current Windows user only)
+When changing authentication, preserve the credential precedence, system-credential opt-out, and Pi model-selection requirements in [README.md — Authentication](README.md#authentication).
 
-- Respect `PI_CURSOR_SYSTEM_CREDENTIALS=0` to opt-out of Keychain/IDE DB reading.
-- Always redact tokens and sensitive authorization headers in diagnostics or logs (`redactSecrets()` from `src/utils/security.ts`).
+Always redact tokens and sensitive authorization headers in diagnostics or logs (`redactSecrets()` from `src/utils/security.ts`).
 
 ### 4. Context-Mode & Side-Channel Injections
 
