@@ -75,6 +75,12 @@ Credentials resolve in order:
 
 `/login cursor` wins over harvested CLI/IDE tokens so another Cursor login on the machine does not silently override yours.
 
+`CURSOR_ACCESS_TOKEN` is also registered as Pi's provider auth environment source,
+so Pi can select and stream Cursor models with an empty Pi credential store.
+The token is resolved at runtime and is not copied into Pi's auth file. Without
+an environment token or a Pi login, Pi may still refuse model selection even if
+the extension can resolve CLI/IDE credentials directly.
+
 Opt out of Keychain / IDE / WSL harvest:
 
 ```bash
@@ -107,6 +113,7 @@ Reasoning effort (`off` … `max`) maps to Cursor's model variants. Restrict the
 bun install
 bun run check
 bun run smoke:pi-grok        # live: pi + this provider + Grok 4.7 (falls back to 4.6; needs a Cursor login)
+bun run smoke:pi-opus        # live: pi + this provider + Opus 5.5 (independent of CURSOR_SMOKE_MODEL)
 bun run smoke:pi-firstmate  # live: same, plus a Firstmate watcher extension (CURSOR_SMOKE_FIRSTMATE)
 ```
 
