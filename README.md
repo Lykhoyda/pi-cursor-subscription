@@ -12,7 +12,7 @@ Fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) **1
 | --------------------------- | ------------------------------------------------ |
 | **Pi Coding Agent / Pi AI** | `>= 0.80.0`                                      |
 | **Bun**                     | `>= 1.4.0` (only supported runtime)              |
-| **Cursor account**          | Signed in via app, CLI, or `/login cursor` below |
+| **Cursor account**          | See [Authentication](#authentication)           |
 
 ## Install
 
@@ -28,7 +28,7 @@ pi update git:github.com/Lykhoyda/pi-cursor-subscription
 
 ## Quick start
 
-1. **Sign in** — if the Cursor app or CLI (`cursor` / `agent`) is already logged in on this machine, credentials are picked up automatically. Otherwise:
+1. **Authenticate** — follow [Authentication](#authentication) for existing credentials and Pi model-selection requirements. For browser sign-in:
 
    ```text
    /login cursor
@@ -66,7 +66,7 @@ See [SECURITY.md](SECURITY.md) for credential handling and URL allowlisting.
 
 ## Authentication
 
-Credentials resolve in order:
+The extension resolves credentials in order:
 
 1. `CURSOR_ACCESS_TOKEN`
 2. Pi OAuth store (`~/.pi/agent/auth.json` from `/login cursor`)
@@ -74,6 +74,12 @@ Credentials resolve in order:
 4. Cursor IDE `globalStorage/state.vscdb` (macOS, Linux, Windows, or WSL — current Windows user only on WSL)
 
 `/login cursor` wins over harvested CLI/IDE tokens so another Cursor login on the machine does not silently override yours.
+
+`CURSOR_ACCESS_TOKEN` is also registered as Pi's provider auth environment source,
+so Pi can select and stream Cursor models with an empty Pi credential store.
+The token is resolved at runtime and is not copied into Pi's auth file. Without
+an environment token or a Pi login, Pi may still refuse model selection even if
+the extension can resolve CLI/IDE credentials directly.
 
 Opt out of Keychain / IDE / WSL harvest:
 
@@ -106,9 +112,9 @@ Reasoning effort (`off` … `max`) maps to Cursor's model variants. Restrict the
 ```bash
 bun install
 bun run check
-bun run smoke:pi-grok        # live: pi + this provider + Grok 4.7 (falls back to 4.6; needs a Cursor login)
-bun run smoke:pi-firstmate  # live: same, plus a Firstmate watcher extension (CURSOR_SMOKE_FIRSTMATE)
 ```
+
+For live Pi streaming checks and the pre-PR smoke gate, see [Smoke testing](CONTRIBUTING.md#smoke-testing).
 
 Architecture, module layout, and the full environment variable list live in [AGENTS.md](AGENTS.md).
 

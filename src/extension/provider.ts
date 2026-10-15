@@ -188,6 +188,7 @@ export function createProviderManager(
 
     pi.registerProvider(ProviderConstant.ProviderId, {
       baseUrl: getCursorAgentUrl(),
+      apiKey: "$CURSOR_ACCESS_TOKEN",
       api: ProviderConstant.NativeApi,
       streamSimple,
       models: processed.map(modelConfig),
