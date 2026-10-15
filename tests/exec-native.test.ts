@@ -176,6 +176,12 @@ describe("native exec handlers", () => {
     }
   });
 
+  it("drops AWS_ACCESS_KEY_ID and DATABASE_URL from the shell env", () => {
+    expect(Object.keys(shellEnv({ AWS_ACCESS_KEY_ID: "x", DATABASE_URL: "y", PATH: "/bin" }))).toEqual(
+      ["PATH"],
+    );
+  });
+
   it.skipIf(process.platform !== "linux")(
     "scrubs secrets from the parent's /proc environ before the shell runs",
     () => {
