@@ -11,7 +11,7 @@ Guidance and repository standards for LLM coding agents working on `@lykhoyda/pi
 ### Core Stack
 
 - **Runtime:** Bun >= 1.4.0 only (ESM native `"type": "module"`)
-- **Peer Dependencies:** `@earendil-works/pi-ai` (>=0.80.0), `@earendil-works/pi-coding-agent` (>=0.80.0)
+- **Peer Dependencies:** `@earendil-works/pi-ai` (>=0.86.1), `@earendil-works/pi-coding-agent` (>=0.86.1)
 - **Protobuf / RPC:** `@bufbuild/protobuf` v2, `@bufbuild/buf` for schema compilation (`proto/agent.proto`)
 - **Transport:** In-process HTTP/2 (`src/client/h2-session.ts` for streaming, `src/client/h2-unary.ts` for unary RPCs) — no subprocess
 - **Toolchain:** Bun (package manager, script runner, test runner, bundler)

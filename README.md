@@ -10,7 +10,7 @@ Fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor) **1
 
 |                             |                                                  |
 | --------------------------- | ------------------------------------------------ |
-| **Pi Coding Agent / Pi AI** | `>= 0.80.0`                                      |
+| **Pi Coding Agent / Pi AI** | `>= 0.86.1` (including Pi 1.3.0)                 |
 | **Bun**                     | `>= 1.4.0` (only supported runtime)              |
 | **Cursor account**          | Signed in via app, CLI, or `/login cursor` below |
 
