@@ -1032,8 +1032,9 @@ function truncateUtf8(text: string, maxBytes: number): string {
   return `${buf.subarray(0, end).toString("utf8")}\n\n[truncated]`;
 }
 
-/** Env var names that must not reach a model-controlled shell (covers CURSOR_ACCESS_TOKEN). */
-const SECRET_ENV_KEY = /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY|CREDENTIAL/i;
+/** Env var names that must not reach a model-controlled shell (covers CURSOR_ACCESS_TOKEN, AWS_ACCESS_KEY_ID, DATABASE_URL). */
+const SECRET_ENV_KEY =
+  /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY|CREDENTIAL|ACCESS_KEY|DATABASE_URL|CONNECTION_STRING/i;
 
 export function shellEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([key]) => !SECRET_ENV_KEY.test(key)));

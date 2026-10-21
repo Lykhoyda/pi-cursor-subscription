@@ -1,6 +1,6 @@
 {
   "name": "@lykhoyda/pi-cursor-subscription",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Cursor provider for Pi Coding Agent.",
   "author": "Anton Lykhoyda",
   "license": "MIT",
@@ -68,10 +68,12 @@
     "@bufbuild/protobuf": "^2.15.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.80.0",
-    "@earendil-works/pi-coding-agent": ">=0.80.0"
+    "@earendil-works/pi-ai": ">=0.86.1",
+    "@earendil-works/pi-coding-agent": ">=0.86.1"
   },
   "devDependencies": {
+    "@earendil-works/pi-ai": "0.86.1",
+    "@earendil-works/pi-coding-agent": "0.86.1",
     "@bufbuild/buf": "^1.73.0",
     "@bufbuild/protoc-gen-es": "^2.15.0",
     "@changesets/changelog-github": "^1.0.1",
@@ -80,6 +82,7 @@
     "@types/node": "^26.6.2",
     "oxlint": "^1.83.0",
     "oxlint-tsgolint": "^7.0.2002",
+    "pi130-coding-agent": "npm:@earendil-works/pi-coding-agent@1.3.0",
     "typescript": "^7.0.2"
   },
   "packageManager": "bun@1.4.0"
