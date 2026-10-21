@@ -29,6 +29,7 @@ const LEGS: Leg[] = [
   { name: "wire", script: "scripts/smoke-wire.mjs", deadlineMs: 60_000 },
   { name: "stream", script: "scripts/smoke-stream.mjs", deadlineMs: 150_000 },
   { name: "pi-grok", script: "scripts/smoke-pi-grok.ts", deadlineMs: 240_000, premium: true },
+  { name: "pi-opus", script: "scripts/smoke-pi-opus.ts", deadlineMs: 240_000, premium: true },
   {
     name: "pi-firstmate",
     script: "scripts/smoke-pi-firstmate.ts",

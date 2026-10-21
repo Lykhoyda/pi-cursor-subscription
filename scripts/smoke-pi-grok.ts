@@ -252,7 +252,7 @@ export function summarizeAssistant(events: PiEvent[]) {
   return { deltaCount, streamed, finalText, finalMessage, errorEvents };
 }
 
-async function runPi({ model, thinking }: Selection): Promise<void> {
+export async function runPi({ model, thinking }: Selection): Promise<void> {
   const piBin = locatePi();
   const version = await run(piBin, ["--version"]);
   log("pi", `bin=${piBin} version=${(version.stdout || version.stderr).trim() || "unknown"}`);
