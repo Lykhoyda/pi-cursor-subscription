@@ -55,7 +55,7 @@ By default, `pi-cursor` may read Cursor CLI Keychain items and Cursor IDE `state
 export PI_CURSOR_SYSTEM_CREDENTIALS=0
 ```
 
-When disabled, authenticate only via `/login cursor` or `CURSOR_ACCESS_TOKEN`.
+When disabled, the only credential sources are `/login cursor` and `CURSOR_ACCESS_TOKEN` (`/login cursor` is still required first; see [README](README.md#authentication)).
 
 On WSL, only the current Windows user's `state.vscdb` is read (`USERPROFILE` / `USERNAME`). Other profiles under `/mnt/c/Users` are not scanned.
 
