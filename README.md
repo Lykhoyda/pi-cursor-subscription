@@ -28,7 +28,7 @@ pi update npm:@lykhoyda/pi-cursor-subscription
 
 ## Quick start
 
-1. **Sign in** once. Pi will not send requests to the `cursor` provider until it has a stored login, even if the Cursor desktop app or CLI is already logged in:
+1. **Sign in.** If the Cursor desktop app is logged in on this machine (or the Cursor CLI on macOS), that login is reused. Otherwise:
 
    ```text
    /login cursor
@@ -61,9 +61,7 @@ Pi thinking levels (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) m
 
 ### Authentication
 
-Run `/login cursor` once first. Pi will not call the provider until it has a `cursor` entry in `~/.pi/agent/auth.json`, so a Cursor IDE/CLI login or `CURSOR_ACCESS_TOKEN` on its own is not enough.
-
-After that, requests use the token stored by `/login cursor`. If a request fails authentication, the extension re-resolves the token from the first source that has one:
+Credentials are tried in this order:
 
 1. `CURSOR_ACCESS_TOKEN`
 2. Pi OAuth store (`~/.pi/agent/auth.json` from `/login cursor`)
@@ -100,7 +98,7 @@ Cursor can see Pi's MCP tools. Cursor subagents are not supported and return an 
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CURSOR_ACCESS_TOKEN` | unset | Access token tried first when re-resolving after an auth failure |
+| `CURSOR_ACCESS_TOKEN` | unset | Access token override |
 | `PI_CURSOR_SYSTEM_CREDENTIALS` | on | Set `0` to disable Keychain / IDE harvest |
 | `PI_CURSOR_NATIVE_EXEC` | on | Set `0` to reject privileged native exec |
 | `PI_CURSOR_HOSTED_WEB` | off | Set `1` to auto-approve hosted web / Exa |
