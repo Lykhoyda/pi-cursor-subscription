@@ -28,7 +28,7 @@ pi update npm:@lykhoyda/pi-cursor-subscription
 
 ## Quick start
 
-1. **Sign in.** If the Cursor desktop app is logged in on this machine (or the Cursor CLI on macOS), that login is reused. Otherwise:
+1. **Sign in** once. Pi will not send requests to the `cursor` provider until it has a stored login, even if the Cursor desktop app or CLI is already logged in:
 
    ```text
    /login cursor
@@ -61,7 +61,9 @@ Pi thinking levels (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) m
 
 ### Authentication
 
-Credentials are tried in this order:
+Run `/login cursor` once first. Pi will not call the provider until it has a `cursor` entry in `~/.pi/agent/auth.json`, so a Cursor IDE/CLI login or `CURSOR_ACCESS_TOKEN` on its own is not enough.
+
+After that, the access token is taken from the first source that has one:
 
 1. `CURSOR_ACCESS_TOKEN`
 2. Pi OAuth store (`~/.pi/agent/auth.json` from `/login cursor`)
