@@ -1,6 +1,6 @@
 # @lykhoyda/pi-cursor-subscription
 
-Use the models on your [Cursor](https://cursor.com) subscription inside the [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent). After you sign in, Pi can call Claude, GPT, Composer, Gemini, Grok, Kimi, and whatever else your Cursor account currently offers. No separate provider API key.
+Use the models on your [Cursor](https://cursor.com) subscription inside the [Pi Coding Agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). After you sign in, Pi can call Claude, GPT, Composer, Gemini, Grok, Kimi, and whatever else your Cursor account currently offers. No separate provider API key.
 
 This package registers a `cursor` provider. It is a fork of [`@rahularya01/pi-cursor`](https://github.com/Rahularya01/pi-cursor).
 
@@ -8,7 +8,7 @@ This package registers a `cursor` provider. It is a fork of [`@rahularya01/pi-cu
 
 ## Requirements
 
-- [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent) and Pi AI `>= 0.86.1` (including Pi 1.3.0)
+- [Pi Coding Agent](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) and Pi AI `>= 0.86.1` (including Pi 1.3.0)
 - [Bun](https://bun.com) `>= 1.4.0` (the only supported runtime)
 - A Cursor account
 
