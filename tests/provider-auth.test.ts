@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { unregisterApiProviders } from "@earendil-works/pi-ai/compat";
-import { ModelRuntime, type ExtensionAPI, type ProviderConfig } from "@earendil-works/pi-coding-agent";
+import {
+  ModelRuntime,
+  type ExtensionAPI,
+  type ProviderConfig,
+} from "@earendil-works/pi-coding-agent";
 import cursorExtension from "../src/index.js";
 
 const savedEnv = { ...process.env };
@@ -29,7 +33,8 @@ async function loadCursor() {
   await cursorExtension({
     on() {},
     registerCommand() {},
-    registerProvider: (name: string, config: ProviderConfig) => runtime.registerProvider(name, config),
+    registerProvider: (name: string, config: ProviderConfig) =>
+      runtime.registerProvider(name, config),
   } as unknown as ExtensionAPI);
   return { runtime, credentials };
 }
