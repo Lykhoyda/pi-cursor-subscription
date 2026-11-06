@@ -43,7 +43,7 @@ Both support `CURSOR_SMOKE_THINKING` (default `low`), `CURSOR_SMOKE_PROMPT`, `CU
 
 `smoke:pi-firstmate` loads `.pi/extensions/fm-primary-pi-watch.ts` from `CURSOR_SMOKE_FIRSTMATE` and checks the lifecycle log's `toolNames` for `bash` and `fm_watch_arm_pi`. `FM_HOME` is a temp dir, so the smoke does not write Firstmate state into that checkout.
 
-`smoke:gate` runs the legs defined in [`scripts/smoke-gate.ts`](scripts/smoke-gate.ts) sequentially and SIGKILLs each at its deadline. It exits 0 if all passed, 1 if a leg failed, or 3 if nothing failed but a leg could not run. A quota-exhausted plan or a `resource_exhausted` refusal reports the affected Pi legs as NOT-RUN, never PASS; `smoke:auth` is excluded because it needs an interactive sign-in. `.no-mistakes.yaml` runs the smoke gate as a custom gate after lint (no-mistakes ≥ v1.74.0; gates are read from the default branch only).
+`smoke:gate` runs the legs defined in [`scripts/smoke-gate.ts`](scripts/smoke-gate.ts) sequentially and SIGKILLs each at its deadline. It exits 0 if all passed, 1 if a leg failed, or 3 if nothing failed but a leg could not run. `smoke:pi-opus` is not a gate leg; run it explicitly. A quota-exhausted plan or a `resource_exhausted` refusal reports the affected Pi legs as NOT-RUN, never PASS; `smoke:auth` is excluded because it needs an interactive sign-in. `.no-mistakes.yaml` runs the smoke gate as a custom gate after lint (no-mistakes ≥ v1.74.0; gates are read from the default branch only).
 
 ## Generated code
 

@@ -50,7 +50,7 @@ pi update npm:@lykhoyda/pi-cursor-subscription
 
 | Command | What it does |
 | --- | --- |
-| `/login cursor` | Browser sign-in; refreshes the model list |
+| `/login cursor` | Sign in (pick **Sign in with an account**; see [Authentication](#authentication)); refreshes the model list |
 | `/model cursor/<id>` | Select a Cursor model |
 | `/cursor.models` | List models, context windows, and thinking levels |
 | `/cursor.models all` | Include internal tab/chat variants |
@@ -75,6 +75,11 @@ so Pi can select and stream Cursor models with an empty Pi credential store.
 The token is resolved at runtime and is not copied into Pi's auth file. Without
 an environment token or a Pi login, Pi may still refuse model selection even if
 the extension can resolve CLI/IDE credentials directly.
+
+Because of that registration, `/login cursor` shows a chooser. Pick **Sign in with
+an account** for the browser sign-in. Choosing **API key** overwrites the saved
+Cursor sign-in in Pi's auth file, and the extension ignores that key: it falls back
+to the other credentials above, or to none with `PI_CURSOR_SYSTEM_CREDENTIALS=0`.
 
 To skip Keychain / IDE reuse:
 
