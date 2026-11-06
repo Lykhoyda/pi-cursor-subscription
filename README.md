@@ -77,7 +77,7 @@ an environment token or a Pi login, Pi may still refuse model selection even if
 the extension can resolve CLI/IDE credentials directly.
 
 Because of that registration, `/login cursor` shows a chooser. Pick **Sign in with
-an account** for the browser sign-in. Choosing **API key** overwrites the saved
+an account** for the browser sign-in. Choosing **Sign in with an API key** overwrites the saved
 Cursor sign-in in Pi's auth file, and the extension ignores that key: it falls back
 to the other credentials above, or to none with `PI_CURSOR_SYSTEM_CREDENTIALS=0`.
 
