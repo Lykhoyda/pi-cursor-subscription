@@ -27,9 +27,10 @@ describe("decodeUsableModelsResponse", () => {
   });
 
   it("decodes a Connect-framed body", () => {
-    expect(
-      decodeUsableModelsResponse(connectFrame(plain))?.models.map((m) => m.modelId),
-    ).toEqual(["default", "gpt-5"]);
+    expect(decodeUsableModelsResponse(connectFrame(plain))?.models.map((m) => m.modelId)).toEqual([
+      "default",
+      "gpt-5",
+    ]);
   });
 
   it("returns null for a body that is neither", () => {

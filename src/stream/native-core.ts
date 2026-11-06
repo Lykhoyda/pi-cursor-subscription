@@ -1961,7 +1961,8 @@ export function resolveRequestedModelId(
   model: string | CursorResolvableModel,
   reasoningEffort?: string,
   cursorModelIdOrRoutingByModelId?:
-    string | Map<string, Record<string, CursorNativeModelRouting> | CursorNativeModelRouting>,
+    | string
+    | Map<string, Record<string, CursorNativeModelRouting> | CursorNativeModelRouting>,
 ): string | ResolvedCursorModelRouting {
   return resolveRequestedModelIdImpl(
     model as any,

@@ -32,7 +32,9 @@ function run(offered: { id: string }[], events: object[]) {
 it("requires an offered model, reply text, and stop completion", () => {
   const absent = run([], []);
   expect(absent.status).toBe(1);
-  expect(absent.stderr).toContain('model "default" is not offered to this account (set CURSOR_SMOKE_MODEL)');
+  expect(absent.stderr).toContain(
+    'model "default" is not offered to this account (set CURSOR_SMOKE_MODEL)',
+  );
 
   const empty = run([{ id: "default" }], [{ type: "done", reason: "stop" }]);
   expect(empty.status).toBe(1);
@@ -42,10 +44,13 @@ it("requires an offered model, reply text, and stop completion", () => {
   expect(unfinished.status).toBe(1);
   expect(unfinished.stderr).toContain("smoke-stream: FAILED — stream did not stop");
 
-  const complete = run([{ id: "default" }], [
-    { type: "text_delta", delta: "pong" },
-    { type: "done", reason: "stop" },
-  ]);
+  const complete = run(
+    [{ id: "default" }],
+    [
+      { type: "text_delta", delta: "pong" },
+      { type: "done", reason: "stop" },
+    ],
+  );
   expect(complete.status).toBe(0);
   expect(complete.stdout).toContain("pong");
   expect(complete.stdout).toContain("stop: stop");

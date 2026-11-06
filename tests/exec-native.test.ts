@@ -134,7 +134,11 @@ describe("native exec handlers", () => {
     const commands = [
       { command: "echo shell-ok", stdout: "shell-ok", stderr: "" },
       { command: "printf '%s\\n' 'lock: held'", stdout: "lock: held", stderr: "" },
-      { command: "printf '%s\\n' 'WAKE_ACK_REQUIRED' >&2", stdout: "", stderr: "WAKE_ACK_REQUIRED" },
+      {
+        command: "printf '%s\\n' 'WAKE_ACK_REQUIRED' >&2",
+        stdout: "",
+        stderr: "WAKE_ACK_REQUIRED",
+      },
     ];
     for (const item of commands) {
       const events = await shellStreamEvents(item.command, 2);
@@ -226,7 +230,12 @@ describe("native fetch refuses private and internal targets", () => {
     calls = [];
     return (url, address) => {
       calls.push(`${url.href} @ ${address}`);
-      return Promise.resolve({ status: 200, headers: {}, body: Buffer.from(""), ...respond(url.href) });
+      return Promise.resolve({
+        status: 200,
+        headers: {},
+        body: Buffer.from(""),
+        ...respond(url.href),
+      });
     };
   }
 
@@ -268,7 +277,10 @@ describe("native fetch refuses private and internal targets", () => {
   });
 
   it("re-checks redirect hops instead of following them into the LAN", async () => {
-    const request = fakeRequest(() => ({ status: 302, headers: { location: "http://127.0.0.1/" } }));
+    const request = fakeRequest(() => ({
+      status: 302,
+      headers: { location: "http://127.0.0.1/" },
+    }));
     await expect(fetchPublic(new URL("http://93.184.216.34/"), request)).rejects.toThrow(
       "private or internal",
     );
@@ -276,7 +288,10 @@ describe("native fetch refuses private and internal targets", () => {
   });
 
   it("refuses non-http redirect targets", async () => {
-    const request = fakeRequest(() => ({ status: 302, headers: { location: "file:///etc/passwd" } }));
+    const request = fakeRequest(() => ({
+      status: 302,
+      headers: { location: "file:///etc/passwd" },
+    }));
     await expect(fetchPublic(new URL("http://93.184.216.34/"), request)).rejects.toThrow(
       "Only http and https",
     );
@@ -297,7 +312,10 @@ describe("native fetch refuses private and internal targets", () => {
   it("still fetches public hosts and follows public redirects to the checked address", async () => {
     const request = fakeRequest((url) =>
       url === "http://93.184.216.34/"
-        ? { status: 301, headers: { location: "https://[2606:2800:21f:cb07:6820:80da:af6b:8b2c]/x" } }
+        ? {
+            status: 301,
+            headers: { location: "https://[2606:2800:21f:cb07:6820:80da:af6b:8b2c]/x" },
+          }
         : { body: Buffer.from("public body") },
     );
     const response = await fetchPublic(new URL("http://93.184.216.34/"), request);
@@ -339,13 +357,17 @@ interface ShellStreamEvent {
   data?: string;
 }
 
-async function shellStreamEvents(command: string, timeoutBehavior?: number): Promise<ShellStreamEvent[]> {
+async function shellStreamEvents(
+  command: string,
+  timeoutBehavior?: number,
+): Promise<ShellStreamEvent[]> {
   const dispatched = dispatchNativeExec("shellStreamArgs", {
     command,
     workingDirectory: ".",
     ...(timeoutBehavior === undefined ? {} : { timeoutBehavior }),
   });
-  if (dispatched?.kind !== "stream") throw new Error(`expected a shell stream, got ${dispatched?.kind}`);
+  if (dispatched?.kind !== "stream")
+    throw new Error(`expected a shell stream, got ${dispatched?.kind}`);
   const events: ShellStreamEvent[] = [];
   await dispatched.run((frame) => {
     const event = (frame.value as { event: { case: string; value?: { data?: string } } }).event;

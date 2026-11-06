@@ -1,6 +1,14 @@
 import { expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,26 +36,41 @@ it("loads built dist in official Pi 1.3.0 without extension-local Pi dependencie
     mkdirSync(join(fixture, "node_modules", "@bufbuild"), { recursive: true });
     writeFileSync(join(fixture, "package.json"), JSON.stringify({ type: "module" }));
     copyFileSync(join(ROOT, "dist", "index.js"), join(fixture, "dist", "index.js"));
-    symlinkSync(join(ROOT, "node_modules", "@bufbuild", "protobuf"), join(fixture, "node_modules", "@bufbuild", "protobuf"));
-    const result = spawnSync(process.execPath, [
-      join(hostRoot, "dist", "bundle", "cli.js"),
-      "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-session",
-      "--extension", join(fixture, "dist", "index.js"),
-      "--print", "--provider", "cursor", "--model", "pi130-startup-probe",
-      "startup probe",
-    ], {
-      cwd: fixture,
-      encoding: "utf8",
-      timeout: 10_000,
-      env: {
-        PATH: process.env.PATH,
-        HOME: fixture,
-        PI_CODING_AGENT_DIR: join(fixture, "agent"),
-        PI_OFFLINE: "1",
-        PI_TELEMETRY: "0",
-        PI_CURSOR_SYSTEM_CREDENTIALS: "0",
+    symlinkSync(
+      join(ROOT, "node_modules", "@bufbuild", "protobuf"),
+      join(fixture, "node_modules", "@bufbuild", "protobuf"),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(hostRoot, "dist", "bundle", "cli.js"),
+        "--no-extensions",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-session",
+        "--extension",
+        join(fixture, "dist", "index.js"),
+        "--print",
+        "--provider",
+        "cursor",
+        "--model",
+        "pi130-startup-probe",
+        "startup probe",
+      ],
+      {
+        cwd: fixture,
+        encoding: "utf8",
+        timeout: 10_000,
+        env: {
+          PATH: process.env.PATH,
+          HOME: fixture,
+          PI_CODING_AGENT_DIR: join(fixture, "agent"),
+          PI_OFFLINE: "1",
+          PI_TELEMETRY: "0",
+          PI_CURSOR_SYSTEM_CREDENTIALS: "0",
+        },
       },
-    });
+    );
     const output = result.stdout + result.stderr;
     expect(result.error).toBeUndefined();
     expect(output).not.toContain("Failed to load extension");

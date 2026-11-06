@@ -48,14 +48,14 @@ pi update npm:@lykhoyda/pi-cursor-subscription
 
 ### Commands
 
-| Command | What it does |
-| --- | --- |
-| `/login cursor` | Browser sign-in; refreshes the model list |
-| `/model cursor/<id>` | Select a Cursor model |
-| `/cursor.models` | List models, context windows, and thinking levels |
-| `/cursor.models all` | Include internal tab/chat variants |
-| `/cursor.usage` | Print plan quota and on-demand spend |
-| `/cursor.doctor` | Sanitized diagnostics |
+| Command              | What it does                                      |
+| -------------------- | ------------------------------------------------- |
+| `/login cursor`      | Browser sign-in; refreshes the model list         |
+| `/model cursor/<id>` | Select a Cursor model                             |
+| `/cursor.models`     | List models, context windows, and thinking levels |
+| `/cursor.models all` | Include internal tab/chat variants                |
+| `/cursor.usage`      | Print plan quota and on-demand spend              |
+| `/cursor.doctor`     | Sanitized diagnostics                             |
 
 Pi thinking levels (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) map onto Cursor variants when the model advertises them. Limit the picker with `enabledModels` in `~/.pi/agent/settings.json`.
 
@@ -96,18 +96,18 @@ Cursor can see Pi's MCP tools. Cursor subagents are not supported and return an 
 
 ### Environment variables
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `CURSOR_ACCESS_TOKEN` | unset | Access token override |
-| `PI_CURSOR_SYSTEM_CREDENTIALS` | on | Set `0` to disable Keychain / IDE harvest |
-| `PI_CURSOR_NATIVE_EXEC` | on | Set `0` to reject privileged native exec |
-| `PI_CURSOR_HOSTED_WEB` | off | Set `1` to auto-approve hosted web / Exa |
-| `PI_CURSOR_CLIENT_VERSION` | bundled default | Pin the `x-cursor-client-version` header |
-| `PI_CURSOR_AGENT_URL` / `CURSOR_AGENT_URL` | Cursor's agent host | Must be `*.cursor.sh` / `*.cursor.com` or localhost |
-| `PI_CURSOR_STREAM_IDLE_TIMEOUT_MS` | `180000` (3 min) | Silence watchdog; `0` disables |
-| `PI_CURSOR_CACHE_DIR` | `~/.cache/pi-cursor` | Model catalog cache (`$XDG_CACHE_HOME/pi-cursor` if set) |
-| `PI_CURSOR_PROVIDER_DEBUG` | off | Verbose debug log |
-| `PI_PROXY_CURSOR` / `PI_PROXY` / `HTTPS_PROXY` | unset | HTTP CONNECT proxy |
+| Variable                                       | Default              | Purpose                                                  |
+| ---------------------------------------------- | -------------------- | -------------------------------------------------------- |
+| `CURSOR_ACCESS_TOKEN`                          | unset                | Access token override                                    |
+| `PI_CURSOR_SYSTEM_CREDENTIALS`                 | on                   | Set `0` to disable Keychain / IDE harvest                |
+| `PI_CURSOR_NATIVE_EXEC`                        | on                   | Set `0` to reject privileged native exec                 |
+| `PI_CURSOR_HOSTED_WEB`                         | off                  | Set `1` to auto-approve hosted web / Exa                 |
+| `PI_CURSOR_CLIENT_VERSION`                     | bundled default      | Pin the `x-cursor-client-version` header                 |
+| `PI_CURSOR_AGENT_URL` / `CURSOR_AGENT_URL`     | Cursor's agent host  | Must be `*.cursor.sh` / `*.cursor.com` or localhost      |
+| `PI_CURSOR_STREAM_IDLE_TIMEOUT_MS`             | `180000` (3 min)     | Silence watchdog; `0` disables                           |
+| `PI_CURSOR_CACHE_DIR`                          | `~/.cache/pi-cursor` | Model catalog cache (`$XDG_CACHE_HOME/pi-cursor` if set) |
+| `PI_CURSOR_PROVIDER_DEBUG`                     | off                  | Verbose debug log                                        |
+| `PI_PROXY_CURSOR` / `PI_PROXY` / `HTTPS_PROXY` | unset                | HTTP CONNECT proxy                                       |
 
 ## Troubleshooting
 

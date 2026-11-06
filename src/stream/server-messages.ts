@@ -676,7 +676,9 @@ function handleExecMessageInner(
       create(SubagentResultSchema, {
         result: {
           case: "error",
-          value: create(SubagentErrorSchema, { error: "Cursor subagents are not available in Pi." }),
+          value: create(SubagentErrorSchema, {
+            error: "Cursor subagents are not available in Pi.",
+          }),
         },
       }),
       sendFrame,
