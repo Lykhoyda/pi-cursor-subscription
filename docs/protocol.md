@@ -32,14 +32,7 @@ https://agentn.us.api5.cursor.sh / https://api2.cursor.sh
 
 ## Authentication Cascade
 
-`pi-cursor` resolves credentials using a 4-tier fallback:
-
-```text
-1. CURSOR_ACCESS_TOKEN env var
-2. Pi OAuth credentials store (~/.pi/agent/auth.json via PKCE deep-link flow)
-3. macOS Keychain (cursor-access-token / cursor-refresh-token via security CLI)
-4. Cursor IDE local SQLite DB (globalStorage/state.vscdb; WSL uses the current Windows user only)
-```
+See [README.md — Authentication](../README.md#authentication) for credential precedence and Pi model-selection requirements.
 
 If an access token is expired or close to expiry, `refreshCursorToken()` sends a refresh request to `POST https://api2.cursor.sh/auth/exchange_user_api_key`.
 
