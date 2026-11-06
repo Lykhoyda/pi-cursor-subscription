@@ -564,7 +564,9 @@ describe("completed-turn connection close", () => {
       40,
     );
 
-    onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }));
+    onData(
+      updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }),
+    );
     const beats = setInterval(
       () => onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) })),
       10,
@@ -630,7 +632,9 @@ describe("completed-turn connection close", () => {
         idleMs,
       );
 
-      onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }));
+      onData(
+        updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "ok" }) }),
+      );
       const workAt = Date.now();
       await new Promise((resolve) => setTimeout(resolve, 400));
       onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) }));
@@ -710,7 +714,9 @@ describe("completed-turn connection close", () => {
     const traffic = setInterval(() => {
       tick += 1;
       if (tick % 3 === 0) {
-        onData(updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "." }) }));
+        onData(
+          updateFrame({ case: "textDelta", value: create(TextDeltaUpdateSchema, { text: "." }) }),
+        );
       } else {
         onData(updateFrame({ case: "heartbeat", value: create(HeartbeatUpdateSchema, {}) }));
       }

@@ -14,11 +14,7 @@ import { rm } from "node:fs/promises";
 const OUT_DIR = "dist";
 
 // Real runtime deps resolved from node_modules, not inlined.
-const EXTERNAL = [
-  "@earendil-works/pi-ai",
-  "@earendil-works/pi-coding-agent",
-  "@bufbuild/protobuf",
-];
+const EXTERNAL = ["@earendil-works/pi-ai", "@earendil-works/pi-coding-agent", "@bufbuild/protobuf"];
 
 await rm(OUT_DIR, { recursive: true, force: true });
 

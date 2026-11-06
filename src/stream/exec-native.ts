@@ -895,7 +895,11 @@ export interface PinnedResponse {
   body: Buffer;
 }
 
-export type PinnedRequest = (url: URL, address: string, signal: AbortSignal) => Promise<PinnedResponse>;
+export type PinnedRequest = (
+  url: URL,
+  address: string,
+  signal: AbortSignal,
+) => Promise<PinnedResponse>;
 
 /**
  * Follows redirects by hand so every hop is re-checked against the scheme and
@@ -968,7 +972,11 @@ export async function requestPinned(
     size += chunk.length;
     if (size > MAX_FETCH_BYTES) break;
   }
-  return { status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks) };
+  return {
+    status: response.statusCode ?? 0,
+    headers: response.headers,
+    body: Buffer.concat(chunks),
+  };
 }
 
 function fetchError(url: string, error: string): NativeExecFrame {
@@ -1126,7 +1134,14 @@ export async function runShellCommand(
 }> {
   await scrubSecretsFromEnvBlock();
   if (signal?.aborted) {
-    return { stdout: "", stderr: "aborted", exitCode: 1, signal: "SIGKILL", timedOut: false, aborted: true };
+    return {
+      stdout: "",
+      stderr: "aborted",
+      exitCode: 1,
+      signal: "SIGKILL",
+      timedOut: false,
+      aborted: true,
+    };
   }
   return new Promise((resolve) => {
     const isWin = process.platform === "win32";

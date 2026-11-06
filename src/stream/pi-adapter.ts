@@ -17,10 +17,7 @@ import type {
   Tool as PiTool,
   ToolCall as PiToolCall,
 } from "@earendil-works/pi-ai";
-import {
-  getCurrentSystemPrompt,
-  getCurrentTools,
-} from "@earendil-works/pi-ai";
+import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 
 import { redactSecrets } from "../utils/security.js";
 import type { CursorNativeModelRouting } from "./model-routing.js";

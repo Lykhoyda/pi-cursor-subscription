@@ -27,7 +27,10 @@ export type {
 } from "./types.js";
 
 export type FullHistoryRebuildReason =
-  "no_checkpoint" | "synthesized_after_idle" | "stale_checkpoint" | "checkpoint_tool_mismatch";
+  | "no_checkpoint"
+  | "synthesized_after_idle"
+  | "stale_checkpoint"
+  | "checkpoint_tool_mismatch";
 
 export type RecoveryDecision =
   | {

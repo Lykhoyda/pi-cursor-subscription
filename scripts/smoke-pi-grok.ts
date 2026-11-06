@@ -137,7 +137,8 @@ export async function pickGrokModel(accessToken: string): Promise<Selection> {
     );
   }
 
-  const thinking = (process.env.CURSOR_SMOKE_THINKING?.trim() || DEFAULT_THINKING) as PiThinkingLevel;
+  const thinking = (process.env.CURSOR_SMOKE_THINKING?.trim() ||
+    DEFAULT_THINKING) as PiThinkingLevel;
   const cursorEffort = model.effortMap?.[thinking];
   if (model.supportsEffort && !cursorEffort) {
     const allowed = Object.entries(model.effortMap ?? {})
@@ -305,7 +306,11 @@ export async function runPi({ model, thinking }: Selection): Promise<void> {
     fail("stream", "pi reported error events", JSON.stringify(summary.errorEvents, null, 2));
   }
   if (!summary.finalMessage) {
-    fail("stream", "no assistant message_end in pi output", `${result.stderr}\n${nonJson.join("\n")}`);
+    fail(
+      "stream",
+      "no assistant message_end in pi output",
+      `${result.stderr}\n${nonJson.join("\n")}`,
+    );
   }
   const { provider, api, model: reportedModel, stopReason, usage } = summary.finalMessage;
   if (provider !== "cursor" || api !== "cursor-native") {

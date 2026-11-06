@@ -2,37 +2,34 @@
   "name": "@lykhoyda/pi-cursor-subscription",
   "version": "1.6.2",
   "description": "Cursor provider for Pi Coding Agent.",
-  "author": "Anton Lykhoyda",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Lykhoyda/pi-cursor-subscription.git"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
+  "keywords": [
+    "cursor",
+    "oauth",
+    "pi-extension",
+    "pi-package",
+    "provider"
+  ],
   "homepage": "https://github.com/Lykhoyda/pi-cursor-subscription#readme",
   "bugs": {
     "url": "https://github.com/Lykhoyda/pi-cursor-subscription/issues"
   },
-  "type": "module",
-  "main": "./dist/index.js",
-  "engines": {
-    "bun": ">=1.4.0"
+  "license": "MIT",
+  "author": "Anton Lykhoyda",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lykhoyda/pi-cursor-subscription.git"
   },
-  "keywords": [
-    "pi-package",
-    "pi-extension",
-    "cursor",
-    "oauth",
-    "provider"
-  ],
   "files": [
     "LICENSE",
     "README.md",
     "CHANGELOG.md",
     "dist"
   ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "bun scripts/build.ts",
     "prepare": "bun run build || node scripts/prepare.mjs",
@@ -40,6 +37,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src tests",
     "lint:fix": "oxlint src tests --fix",
+    "format": "oxfmt --write",
+    "format:check": "oxfmt --check",
     "security-check": "bun scripts/security-check.ts",
     "proto:gen": "buf generate",
     "proto:sync": "bun scripts/proto-sync.ts",
@@ -60,34 +59,38 @@
     "changeset": "changeset",
     "changeset:version": "changeset version"
   },
-  "pi": {
-    "extensions": [
-      "./dist/index.js"
-    ]
-  },
   "dependencies": {
     "@bufbuild/protobuf": "^2.15.0"
   },
-  "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.86.1",
-    "@earendil-works/pi-coding-agent": ">=0.86.1"
-  },
   "devDependencies": {
-    "@earendil-works/pi-ai": "0.86.1",
-    "@earendil-works/pi-coding-agent": "0.86.1",
     "@bufbuild/buf": "^1.73.0",
     "@bufbuild/protoc-gen-es": "^2.15.0",
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
+    "@earendil-works/pi-ai": "0.86.1",
+    "@earendil-works/pi-coding-agent": "0.86.1",
     "@types/bun": "^1.4.2",
     "@types/node": "^26.6.2",
+    "oxfmt": "^0.77.0",
     "oxlint": "^1.83.0",
     "oxlint-tsgolint": "^7.0.2002",
     "pi130-coding-agent": "npm:@earendil-works/pi-coding-agent@1.3.0",
     "typescript": "^7.0.2"
   },
-  "packageManager": "bun@1.4.0",
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.86.1",
+    "@earendil-works/pi-coding-agent": ">=0.86.1"
+  },
   "overrides": {
     "undici": "8.12.2"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "packageManager": "bun@1.4.3",
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
   }
 }

@@ -19,11 +19,6 @@ coverageReporter = ["text", "lcov"]
 coverageDir = "coverage"
 # Mirrors vitest's coverage.exclude: generated protobuf bindings, barrel files,
 # and type-only modules are not meaningful coverage targets.
-coveragePathIgnorePatterns = [
-  "src/proto/**",
-  "src/**/index.ts",
-  "src/stream/types.ts",
-]
-
+coveragePathIgnorePatterns = ["src/proto/**", "src/**/index.ts", "src/stream/types.ts"]
 
 

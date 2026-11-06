@@ -64,7 +64,8 @@ export function resolveRequestedModelId(
   model: string | CursorResolvableModel,
   reasoningEffort?: string,
   cursorModelIdOrRoutingByModelId?:
-    string | Map<string, CursorModelRoutingByEffort | CursorNativeModelRouting>,
+    | string
+    | Map<string, CursorModelRoutingByEffort | CursorNativeModelRouting>,
 ): string | ResolvedCursorModelRouting {
   if (typeof model === "string") {
     const trimmedCursorModelId =

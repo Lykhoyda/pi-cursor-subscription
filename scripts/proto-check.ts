@@ -21,7 +21,10 @@ try {
 
   execFileSync("buf", ["generate", "--template", template, "proto"], {
     stdio: ["ignore", "inherit", "inherit"],
-    env: { ...process.env, PATH: `${join(process.cwd(), "node_modules/.bin")}:${process.env.PATH}` },
+    env: {
+      ...process.env,
+      PATH: `${join(process.cwd(), "node_modules/.bin")}:${process.env.PATH}`,
+    },
   });
 
   const expected = readFileSync(join(outDir, "agent_pb.ts"), "utf8");

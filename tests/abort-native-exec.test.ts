@@ -71,9 +71,8 @@ function abortMessage() {
 function shellStdout(frame: Uint8Array): string {
   const answer = fromBinary(AgentClientMessageSchema, frame.subarray(5));
   const exec = answer.message.value as ExecClientMessage;
-  const result = (
-    exec.message.value as { result: { value: { stdout?: string; stderr?: string } } }
-  ).result;
+  const result = (exec.message.value as { result: { value: { stdout?: string; stderr?: string } } })
+    .result;
   return `${result.value.stdout ?? ""}${result.value.stderr ?? ""}`;
 }
 
@@ -105,15 +104,18 @@ describe("native shell cancellation", () => {
     expect(Date.now() - started).toBeLessThan(3_000);
   });
 
-  it.skipIf(process.platform === "win32")("kills an in-flight shell when the signal aborts", async () => {
-    const controller = new AbortController();
-    const started = Date.now();
-    const pending = runShellCommand("sleep 30", process.cwd(), 30_000, controller.signal);
-    setTimeout(() => controller.abort(), 30);
-    const result = await pending;
-    expect(result.aborted).toBe(true);
-    expect(Date.now() - started).toBeLessThan(5_000);
-  });
+  it.skipIf(process.platform === "win32")(
+    "kills an in-flight shell when the signal aborts",
+    async () => {
+      const controller = new AbortController();
+      const started = Date.now();
+      const pending = runShellCommand("sleep 30", process.cwd(), 30_000, controller.signal);
+      setTimeout(() => controller.abort(), 30);
+      const result = await pending;
+      expect(result.aborted).toBe(true);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "an abort control cancels the in-flight shell and the next shell still runs",

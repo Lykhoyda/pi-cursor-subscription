@@ -36,7 +36,9 @@ if (import.meta.main) {
   try {
     const accessToken = await resolveCredentialSource();
     const catalog = await discoverCursorCatalog(accessToken);
-    const models = processModels(augmentCursorModels(catalog.rawModels, catalog.parameterizedModels));
+    const models = processModels(
+      augmentCursorModels(catalog.rawModels, catalog.parameterizedModels),
+    );
     const selection = selectOpusModel(
       models,
       (process.env.CURSOR_SMOKE_THINKING?.trim() || "low") as PiThinkingLevel,

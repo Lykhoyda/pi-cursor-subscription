@@ -128,14 +128,23 @@ async function runPi(selection: Selection, project: string): Promise<void> {
       );
     }
     log("tools", names.join(", "));
-    if (result.timedOut) throw new SmokeFailure("pi", `no completion within ${timeoutMs}ms`, result.stderr);
+    if (result.timedOut)
+      throw new SmokeFailure("pi", `no completion within ${timeoutMs}ms`, result.stderr);
     if (result.code !== 0) {
-      throw new SmokeFailure("pi", `exited with code ${result.code}`, `${result.stderr}\n${result.stdout}`);
+      throw new SmokeFailure(
+        "pi",
+        `exited with code ${result.code}`,
+        `${result.stderr}\n${result.stdout}`,
+      );
     }
     const { events, nonJson } = parseJsonLines(result.stdout);
     const summary = summarizeAssistant(events);
     if (summary.errorEvents.length > 0) {
-      throw new SmokeFailure("stream", "pi reported error events", JSON.stringify(summary.errorEvents, null, 2));
+      throw new SmokeFailure(
+        "stream",
+        "pi reported error events",
+        JSON.stringify(summary.errorEvents, null, 2),
+      );
     }
     if (!summary.finalMessage) {
       throw new SmokeFailure(
@@ -152,7 +161,10 @@ async function runPi(selection: Selection, project: string): Promise<void> {
       );
     }
     if (reportedModel !== selection.model.id) {
-      throw new SmokeFailure("stream", `reply model mismatch: expected ${selection.model.id}, got ${reportedModel}`);
+      throw new SmokeFailure(
+        "stream",
+        `reply model mismatch: expected ${selection.model.id}, got ${reportedModel}`,
+      );
     }
     if (stopReason !== "stop") {
       throw new SmokeFailure(
@@ -161,14 +173,18 @@ async function runPi(selection: Selection, project: string): Promise<void> {
         summary.finalMessage.errorMessage ?? "",
       );
     }
-    if (!summary.finalText.trim()) throw new SmokeFailure("stream", "assistant reply text is empty");
+    if (!summary.finalText.trim())
+      throw new SmokeFailure("stream", "assistant reply text is empty");
     log(
       "stream",
       `elapsed=${Date.now() - startedAt}ms usage(in=${usage?.input ?? "?"} out=${usage?.output ?? "?"})`,
     );
     log("reply", `"${summary.finalText.replace(/\s+/g, " ").trim().slice(0, 200)}"`);
-    const gaps = bridgeCloseGaps(existsSync(lifecycleLog) ? readFileSync(lifecycleLog, "utf8") : "");
-    if (gaps.started === 0) throw new SmokeFailure("lifecycle", "no stream_start in the lifecycle log");
+    const gaps = bridgeCloseGaps(
+      existsSync(lifecycleLog) ? readFileSync(lifecycleLog, "utf8") : "",
+    );
+    if (gaps.started === 0)
+      throw new SmokeFailure("lifecycle", "no stream_start in the lifecycle log");
     if (gaps.open.length > 0) {
       throw new SmokeFailure("lifecycle", `bridge never closed for ${gaps.open.join(", ")}`);
     }

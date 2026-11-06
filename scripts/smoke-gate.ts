@@ -96,7 +96,8 @@ async function main(): Promise<never> {
   };
 
   if (!token) {
-    for (const leg of LEGS) verdicts.set(leg.name, { status: "NOT-RUN", reason: "no Cursor credentials" });
+    for (const leg of LEGS)
+      verdicts.set(leg.name, { status: "NOT-RUN", reason: "no Cursor credentials" });
   } else {
     const premiumSkip = await premiumSkipReason(token);
     for (const leg of LEGS) {

@@ -172,7 +172,11 @@ export async function getCursorModels(
       if (decoded?.models?.length) {
         const models = normalizeCursorModels(decoded.models);
         if (models.length > 0) {
-          cachedModels = { accessToken: apiKey, models, expiresAt: Date.now() + MODEL_CACHE_TTL_MS };
+          cachedModels = {
+            accessToken: apiKey,
+            models,
+            expiresAt: Date.now() + MODEL_CACHE_TTL_MS,
+          };
           return models;
         }
       }
@@ -241,7 +245,11 @@ export async function getCursorParameterizedModels(
     if (response.timedOut || response.exitCode !== 0 || response.body.length === 0) return [];
     const body = decodeConnectUnaryBody(response.body) ?? response.body;
     const models = decodeAvailableModelsResponse(body);
-    cachedParameterizedModels = { accessToken: apiKey, models, expiresAt: Date.now() + MODEL_CACHE_TTL_MS };
+    cachedParameterizedModels = {
+      accessToken: apiKey,
+      models,
+      expiresAt: Date.now() + MODEL_CACHE_TTL_MS,
+    };
     return models;
   } catch (err) {
     console.error(

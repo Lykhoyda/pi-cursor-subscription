@@ -14,7 +14,11 @@ function run(models: { id: string }[]) {
   return spawnSync(process.execPath, ["-e", driver], {
     cwd: import.meta.dir + "/..",
     encoding: "utf8",
-    env: { ...process.env, CURSOR_ACCESS_TOKEN: "invalid-test-token", TEST_MODELS: JSON.stringify(models) },
+    env: {
+      ...process.env,
+      CURSOR_ACCESS_TOKEN: "invalid-test-token",
+      TEST_MODELS: JSON.stringify(models),
+    },
     timeout: 5_000,
   });
 }
