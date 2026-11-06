@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.3
+
+### Patch Changes
+
+- [#44](https://github.com/Lykhoyda/pi-cursor-subscription/pull/44) [`73bd469`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/73bd469a3c6cc3a1facef8cf7f4c534d33a781d8) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Register CURSOR_ACCESS_TOKEN with Pi's provider auth resolver so environment-authenticated Cursor models can stream without a Pi-stored login. Add an independent Opus 5.5 Pi smoke alongside Grok, retaining missing-auth refusal.
+
 ## 1.6.2
 
 ### Patch Changes
