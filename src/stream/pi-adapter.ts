@@ -20,7 +20,7 @@ import type {
 import {
   getCurrentSystemPrompt,
   getCurrentTools,
-} from "@earendil-works/pi-ai/utils/transcript";
+} from "@earendil-works/pi-ai";
 
 import { redactSecrets } from "../utils/security.js";
 import type { CursorNativeModelRouting } from "./model-routing.js";

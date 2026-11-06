@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.2
+
+### Patch Changes
+
+- [#57](https://github.com/Lykhoyda/pi-cursor-subscription/pull/57) [`780253d`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/780253d8ff91b2ea6965fa4934cf1dd977403789) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Fix extension startup on Pi 1.3.0 by importing transcript helpers through the host-provided pi-ai root API. Require Pi Coding Agent and Pi AI 0.86.1 or newer, and test the built extension with Pi 1.3.0 without extension-local Pi dependencies.
+
+- [#45](https://github.com/Lykhoyda/pi-cursor-subscription/pull/45) [`53eaee0`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/53eaee06394a61dd19cabf9200bb09aa5dbaf69c) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Widen the native-shell env denylist so `AWS_ACCESS_KEY_ID`, `DATABASE_URL`, and `CONNECTION_STRING` are stripped from the child and from the parent environ scrub, matching names that `TOKEN`/`SECRET` already covered.
+
 ## 1.6.1
 
 ### Patch Changes
