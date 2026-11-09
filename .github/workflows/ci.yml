@@ -5,6 +5,11 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # release.yml dispatches this on changeset-release/main after it creates or
+  # updates the Version Packages PR. That PR is opened by github-actions[bot],
+  # so its pull_request run waits for manual approval and never creates the
+  # Check (Bun) job; a GITHUB_TOKEN workflow_dispatch run does not wait.
+  workflow_dispatch:
 
 permissions:
   contents: read
