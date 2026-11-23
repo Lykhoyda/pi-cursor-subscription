@@ -4,6 +4,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      pi-development:
+        patterns:
+          - "@earendil-works/pi-ai"
+          - "@earendil-works/pi-coding-agent"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

@@ -1,28 +1,19 @@
 import { expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(import.meta.dir, "..");
-const hostEntry = import.meta.resolve("pi130-coding-agent");
+const hostEntry = import.meta.resolve("@earendil-works/pi-coding-agent");
 const hostRoot = resolve(dirname(fileURLToPath(hostEntry)), "..");
 
-it("loads built dist in official Pi 1.3.0 without extension-local Pi dependencies", () => {
-  const hostPackage = JSON.parse(readFileSync(join(hostRoot, "package.json"), "utf8"));
-  expect(hostPackage.version).toBe("1.3.0");
-  const aiEntry = import.meta.resolve("@earendil-works/pi-ai", hostEntry);
-  const aiRoot = resolve(dirname(fileURLToPath(aiEntry)), "..");
-  expect(JSON.parse(readFileSync(join(aiRoot, "package.json"), "utf8")).version).toBe("1.3.0");
+it("loads built dist in the official Pi host without extension-local Pi dependencies", () => {
+  const aiEntry = import.meta.resolve("@earendil-works/pi-ai");
+  const coreEntry = import.meta.resolve("@earendil-works/pi-agent-core", hostEntry);
+  expect(import.meta.resolve("@earendil-works/pi-ai", hostEntry)).toBe(aiEntry);
+  expect(import.meta.resolve("@earendil-works/pi-ai", coreEntry)).toBe(aiEntry);
 
   const build = spawnSync(process.execPath, ["run", "build"], { cwd: ROOT, encoding: "utf8" });
   expect(build.status, build.stderr).toBe(0);
@@ -30,7 +21,7 @@ it("loads built dist in official Pi 1.3.0 without extension-local Pi dependencie
   // Keep the published entry outside the checkout: Pi supplies its peer APIs
   // through the host loader, just as with an installed extension. Linking Pi
   // here would hide unsupported imports that the host does not virtualize.
-  const fixture = mkdtempSync(join(tmpdir(), "pi-cursor-pi130-"));
+  const fixture = mkdtempSync(join(tmpdir(), "pi-cursor-host-"));
   try {
     mkdirSync(join(fixture, "dist"));
     mkdirSync(join(fixture, "node_modules", "@bufbuild"), { recursive: true });
@@ -54,7 +45,7 @@ it("loads built dist in official Pi 1.3.0 without extension-local Pi dependencie
         "--provider",
         "cursor",
         "--model",
-        "pi130-startup-probe",
+        "pi-startup-probe",
         "startup probe",
       ],
       {
