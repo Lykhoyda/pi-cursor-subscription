@@ -29,6 +29,7 @@ bun run smoke:auth         # Interactive browser sign-in
 bun run smoke:models       # Model discovery RPC
 bun run smoke:stream       # HTTP/2 streaming
 bun run smoke:wire         # Low-level wire protocol frames
+bun run smoke:install -- <version-or-tarball> # Install and load the release artifact
 bun run smoke:pi-grok      # End-to-end Pi streaming with Grok
 bun run smoke:pi-opus      # End-to-end Pi streaming with Opus 5.5
 bun run smoke:pi-firstmate # Pi streaming with a Firstmate watcher extension
@@ -69,5 +70,29 @@ Do not include credentials, access tokens, refresh tokens, OAuth client secrets,
 [Changesets](https://changesets.dev/). Behavior PRs: `bun run changeset` and commit `.changeset/<id>.md`. Infra-only: skip. Do not bump `package.json` by hand.
 
 ## Releases
+
+Run the install smoke against a specific npm version or the tarball prepared for publication.
+
+```bash
+bun run smoke:install -- 1.6.3
+bun run build
+npm pack --ignore-scripts --pack-destination /tmp
+bun run smoke:install -- /tmp/lykhoyda-pi-cursor-subscription-1.6.3.tgz
+```
+
+Use the filename printed by `npm pack`. Both inputs go through `pi install`, `pi list`, and
+Pi's normal extension discovery in a fresh scratch directory that is removed at exit.
+The load check uses Pi's offline RPC command list to verify that the installed package
+registered `/cursor.doctor`. The smoke reports the Pi and package versions, the tarball's
+SHA-256 when applicable, and a verdict for each step.
+
+To add a live turn, set `CURSOR_SMOKE_INCLUDED_MODEL` to the exact Pi model ID and
+`CURSOR_SMOKE_THINKING` to the confirmed thinking level (default `low`). Set
+`CURSOR_ACCESS_TOKEN` in the environment for the same account. Confirm that the exact route
+and thinking level draw from available included usage before setting the model, and verify
+that the account cannot fall back to paid usage. Check billing eligibility in the account's
+usage dashboard. If the route cannot be confirmed, leave `CURSOR_SMOKE_INCLUDED_MODEL`
+unset. Exit 0 means every step passed, exit 1 means a step failed, and exit 3 means the package
+checks passed and the live turn is `NOT RUN`. `PI_BIN` selects the Pi executable.
 
 Pending changesets on `main` open a `chore: version packages` PR. Merging that PR tags `vX.Y.Z` and dispatches `publish.yml`, which publishes to npm with OIDC (trusted publisher workflow filename must stay `publish.yml`). Other changeset-free pushes to `main` do not publish. Contributors must not publish the package or modify release credentials.
