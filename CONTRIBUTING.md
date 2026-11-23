@@ -39,6 +39,8 @@ The Pi smokes resolve credentials through the [authentication cascade](README.md
 
 `smoke:pi-grok` prefers a live Grok 4.7 id from the provider catalog and falls back to Grok 4.6. `smoke:pi-opus` selects Opus 5.5 from the live catalog and fails if it is unavailable or the requested thinking level is unsupported. Both build `dist/`, run `pi --print --mode json` with only this extension loaded, and assert a non-empty streamed reply on `provider=cursor` / `api=cursor-native` plus a `bridge_close` for every `stream_start` in the lifecycle log.
 
+The Grok and Opus smokes fail on an `UNHANDLED exec case` warning or its `exec_unknown_shape` lifecycle event, even when Pi exits successfully. The diagnostic reports the exec case or protobuf field number when available. An unhandled exec in the Grok leg fails `smoke:gate`.
+
 Both support `CURSOR_SMOKE_THINKING` (default `low`), `CURSOR_SMOKE_PROMPT`, `CURSOR_SMOKE_TIMEOUT_MS`, and `PI_BIN`. `CURSOR_SMOKE_MODEL` overrides Grok selection only; it cannot redirect the Opus smoke.
 
 `smoke:pi-firstmate` loads `.pi/extensions/fm-primary-pi-watch.ts` from `CURSOR_SMOKE_FIRSTMATE` and checks the lifecycle log's `toolNames` for `bash` and `fm_watch_arm_pi`. `FM_HOME` is a temp dir, so the smoke does not write Firstmate state into that checkout.
