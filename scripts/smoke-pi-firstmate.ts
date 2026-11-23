@@ -15,7 +15,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { bridgeCloseGaps } from "../src/stream/debug-log.js";
 import {
   DIST_ENTRY,
   type Selection,
@@ -23,28 +22,18 @@ import {
   fail,
   locatePi,
   log,
-  parseJsonLines,
+  checkPiPrintOutcome,
+  reportPiPrintOutcome,
   setLogPrefix,
   pickGrokModel,
   resolveCredentialSource,
   run,
-  summarizeAssistant,
 } from "./smoke-pi-grok.ts";
 
 const WATCH_EXTENSION = ".pi/extensions/fm-primary-pi-watch.ts";
 const REQUIRED_TOOLS = ["bash", "fm_watch_arm_pi"] as const;
 const DEFAULT_PROMPT = "Reply with exactly one word: pong. Do not call any tools.";
 const DEFAULT_TIMEOUT_MS = 180_000;
-
-class SmokeFailure extends Error {
-  constructor(
-    readonly step: string,
-    message: string,
-    readonly details?: string,
-  ) {
-    super(message);
-  }
-}
 
 function firstmateRoot(): string {
   const candidate = process.env.CURSOR_SMOKE_FIRSTMATE?.trim();
@@ -58,15 +47,14 @@ function firstmateRoot(): string {
   return candidate;
 }
 
-function toolNamesFromLifecycle(path: string): string[] {
-  if (!existsSync(path)) return [];
+function toolNamesFromLifecycle(lifecycleText: string): string[] {
   const names = new Set<string>();
-  for (const line of readFileSync(path, "utf8").split("\n")) {
+  for (const line of lifecycleText.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
       const event = JSON.parse(trimmed) as { event?: string; toolNames?: unknown };
-      if (event.event !== "request_size" || !Array.isArray(event.toolNames)) continue;
+      if (event?.event !== "request_size" || !Array.isArray(event.toolNames)) continue;
       for (const name of event.toolNames) if (typeof name === "string") names.add(name);
     } catch {
       // A torn final line is not a tool list.
@@ -75,7 +63,7 @@ function toolNamesFromLifecycle(path: string): string[] {
   return [...names];
 }
 
-async function runPi(selection: Selection, project: string): Promise<void> {
+async function runPi(selection: Selection, project: string): Promise<0 | 3> {
   const sandbox = mkdtempSync(join(tmpdir(), "pi-cursor-firstmate-"));
   const lifecycleLog = join(sandbox, "lifecycle.jsonl");
   const prompt = process.env.CURSOR_SMOKE_PROMPT?.trim() || DEFAULT_PROMPT;
@@ -115,95 +103,40 @@ async function runPi(selection: Selection, project: string): Promise<void> {
     FM_STATE_OVERRIDE: join(sandbox, "state"),
     FM_CONFIG_OVERRIDE: join(sandbox, "config"),
   };
+  const startedAt = Date.now();
+  let outcome: ReturnType<typeof checkPiPrintOutcome>;
+  let names: string[];
   try {
-    const startedAt = Date.now();
     const result = await run(locatePi(), args, timeoutMs, { cwd: sandbox, env });
-    const names = toolNamesFromLifecycle(lifecycleLog);
-    const missing = REQUIRED_TOOLS.filter((name) => !names.includes(name));
-    if (missing.length > 0) {
-      throw new SmokeFailure(
-        "tools",
-        `Cursor request missing ${missing.join(", ")}`,
-        `toolNames=${names.join(", ") || "(none)"}\n${result.stderr}\n${result.stdout}`,
-      );
-    }
-    log("tools", names.join(", "));
-    if (result.timedOut)
-      throw new SmokeFailure("pi", `no completion within ${timeoutMs}ms`, result.stderr);
-    if (result.code !== 0) {
-      throw new SmokeFailure(
-        "pi",
-        `exited with code ${result.code}`,
-        `${result.stderr}\n${result.stdout}`,
-      );
-    }
-    const { events, nonJson } = parseJsonLines(result.stdout);
-    const summary = summarizeAssistant(events);
-    if (summary.errorEvents.length > 0) {
-      throw new SmokeFailure(
-        "stream",
-        "pi reported error events",
-        JSON.stringify(summary.errorEvents, null, 2),
-      );
-    }
-    if (!summary.finalMessage) {
-      throw new SmokeFailure(
-        "stream",
-        "no assistant message_end in pi output",
-        `${result.stderr}\n${nonJson.join("\n")}`,
-      );
-    }
-    const { provider, api, model: reportedModel, stopReason, usage } = summary.finalMessage;
-    if (provider !== "cursor" || api !== "cursor-native") {
-      throw new SmokeFailure(
-        "stream",
-        `reply did not come through this provider (provider=${provider} api=${api})`,
-      );
-    }
-    if (reportedModel !== selection.model.id) {
-      throw new SmokeFailure(
-        "stream",
-        `reply model mismatch: expected ${selection.model.id}, got ${reportedModel}`,
-      );
-    }
-    if (stopReason !== "stop") {
-      throw new SmokeFailure(
-        "stream",
-        `assistant stopReason=${stopReason}`,
-        summary.finalMessage.errorMessage ?? "",
-      );
-    }
-    if (!summary.finalText.trim())
-      throw new SmokeFailure("stream", "assistant reply text is empty");
+    const lifecycleText = existsSync(lifecycleLog) ? readFileSync(lifecycleLog, "utf8") : "";
+    names = toolNamesFromLifecycle(lifecycleText);
+    outcome = checkPiPrintOutcome(result, lifecycleText, {
+      modelId: selection.model.id,
+      timeoutMs,
+      missingTools: REQUIRED_TOOLS.filter((name) => !names.includes(name)),
+    });
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+  if (outcome.code !== 1) log("tools", names.join(", "));
+  if (outcome.code === 0) {
+    const { finalMessage, finalText } = outcome.summary;
+    const usage = finalMessage?.usage;
     log(
       "stream",
       `elapsed=${Date.now() - startedAt}ms usage(in=${usage?.input ?? "?"} out=${usage?.output ?? "?"})`,
     );
-    log("reply", `"${summary.finalText.replace(/\s+/g, " ").trim().slice(0, 200)}"`);
-    const gaps = bridgeCloseGaps(
-      existsSync(lifecycleLog) ? readFileSync(lifecycleLog, "utf8") : "",
-    );
-    if (gaps.started === 0)
-      throw new SmokeFailure("lifecycle", "no stream_start in the lifecycle log");
-    if (gaps.open.length > 0) {
-      throw new SmokeFailure("lifecycle", `bridge never closed for ${gaps.open.join(", ")}`);
-    }
-    log("lifecycle", `streams=${gaps.started} all closed`);
-  } finally {
-    rmSync(sandbox, { recursive: true, force: true });
+    log("reply", `"${finalText.replace(/\s+/g, " ").trim().slice(0, 200)}"`);
   }
+  return reportPiPrintOutcome(outcome);
 }
 
-setLogPrefix("smoke-pi-firstmate");
-
-try {
+if (import.meta.main) {
+  setLogPrefix("smoke-pi-firstmate");
   const project = firstmateRoot();
   const accessToken = await resolveCredentialSource();
   const selection = await pickGrokModel(accessToken);
   await buildDist();
-  await runPi(selection, project);
-  console.log("smoke-pi-firstmate: ok");
-} catch (error) {
-  if (error instanceof SmokeFailure) fail(error.step, error.message, error.details);
-  throw error;
+  process.exitCode = await runPi(selection, project);
+  if (process.exitCode === 0) console.log("smoke-pi-firstmate: ok");
 }

@@ -849,6 +849,9 @@ async function handleCursorNativeRequest(
   });
 }
 
+const bridgeIds = new WeakMap<BridgeHandle, number>();
+let nextBridgeId = 0;
+
 function writeNativeStream(
   bridge: BridgeHandle,
   heartbeatTimer: ReturnType<typeof setInterval>,
@@ -870,6 +873,11 @@ function writeNativeStream(
   clientTranscript: ClientTranscript = liveTranscript(completedTurns),
 ): void {
   const persistenceTurns = clientTranscript.completedTurns;
+  let bridgeId = bridgeIds.get(bridge);
+  if (bridgeId === undefined) {
+    bridgeId = ++nextBridgeId;
+    bridgeIds.set(bridge, bridgeId);
+  }
   debugLog("native.stream.start", {
     requestId,
     bridgeKey,
@@ -880,6 +888,7 @@ function writeNativeStream(
   });
   lifecycleLog("stream_start", {
     requestId,
+    bridgeId,
     bridgeKey: bridgeKeyPrefix(bridgeKey),
     convKey,
     modelId,
@@ -1136,6 +1145,16 @@ function writeNativeStream(
     }
   };
 
+  const persistToolPause = () =>
+    handleBridgeCloseMidPause({
+      stored: conversationStates.get(convKey),
+      latestCheckpoint: checkpointRef.current,
+      blobStore,
+      completedTurns: persistenceTurns,
+      pendingExecs: emittedExecs,
+      convKey,
+    });
+
   const finalizeSuccessfulStream = () => {
     if (cancelled || streamFinalized) return;
     streamFinalized = true;
@@ -1144,14 +1163,7 @@ function writeNativeStream(
     options?.signal?.removeEventListener("abort", abort);
     const stored = conversationStates.get(convKey);
     if (mcpExecReceived) {
-      handleBridgeCloseMidPause({
-        stored,
-        latestCheckpoint: checkpointRef.current,
-        blobStore,
-        completedTurns: persistenceTurns,
-        pendingExecs: emittedExecs,
-        convKey,
-      });
+      persistToolPause();
       removeActiveBridge(bridgeKey);
       return;
     }
@@ -1178,6 +1190,7 @@ function writeNativeStream(
 
   const processChunk = createConnectFrameParser(
     (messageBytes) => {
+      if (streamFinalized) return;
       try {
         const serverMessage = fromBinary(AgentServerMessageSchema, messageBytes);
         const progress = processServerMessage(
@@ -1299,6 +1312,7 @@ function writeNativeStream(
       }
     },
     (endStreamBytes) => {
+      if (streamFinalized) return;
       const endError = parseConnectEndStream(endStreamBytes);
       if (endError) {
         // Cursor closes the connection right after `turnEnded`. That close ends a completed
@@ -1357,7 +1371,16 @@ function writeNativeStream(
           }
           return;
         }
-        writer.error(enhanced, "error", state);
+        // A persistent bridge can deliver clean EOF after the Connect error.
+        // Finalize before cleanup so neither EOF nor close can park it or save
+        // the tool pause again.
+        streamFinalized = true;
+        if (mcpExecReceived) persistToolPause();
+        nativeExecAbort.abort();
+        idleWatchdog.clear();
+        options?.signal?.removeEventListener("abort", abort);
+        cleanupBridge(bridge, heartbeatTimer, bridgeKey);
+        if (!writer.closed) writer.error(enhanced, "error", state);
       }
     },
   );
@@ -1414,6 +1437,7 @@ function writeNativeStream(
     });
     lifecycleLog("bridge_close", {
       requestId,
+      bridgeId,
       bridgeKey: bridgeKeyPrefix(bridgeKey),
       convKey,
       code,
@@ -1433,14 +1457,7 @@ function writeNativeStream(
     // below, which owns restart-vs-fail. Anything else already reported the failure to the client.
     if (streamError && !retriableEndError) {
       if (mcpExecReceived) {
-        const midPauseResult = handleBridgeCloseMidPause({
-          stored,
-          latestCheckpoint: checkpointRef.current,
-          blobStore,
-          completedTurns: persistenceTurns,
-          pendingExecs: emittedExecs,
-          convKey,
-        });
+        const midPauseResult = persistToolPause();
         debugLog(
           midPauseResult.committed
             ? "bridge.died_mid_pause_checkpoint_saved"

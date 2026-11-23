@@ -1,21 +1,26 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { create, toBinary } from "@bufbuild/protobuf";
+import { getEventListeners } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, statSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   AgentServerMessageSchema,
+  ConversationStateStructureSchema,
   ExecServerMessageSchema,
   HeartbeatUpdateSchema,
   InteractionUpdateSchema,
+  McpArgsSchema,
+  McpToolDefinitionSchema,
   TextDeltaUpdateSchema,
   TurnEndedUpdateSchema,
+  type AgentServerMessage,
   type InteractionUpdate,
 } from "../src/proto/agent_pb.js";
 import { frameConnectMessage, MAX_CONNECT_MESSAGE_BYTES } from "../src/client/bridge.js";
 import { ConnectFlag } from "../src/types/enums.js";
-import { __testInternals } from "../src/stream/native-core.js";
+import { __testInternals, planRecovery } from "../src/stream/native-core.js";
 import {
   canBlindIdleRestart,
   canRecoverAfterTransportLoss,
@@ -43,6 +48,7 @@ import {
   deriveConversationKeyFromSessionId,
 } from "../src/stream/session-state.js";
 import {
+  activeBridges,
   parkIdleBridge,
   setBridgeFactoryForTests,
   startBridge,
@@ -775,30 +781,44 @@ describe("retriable Cursor end-stream errors", () => {
     return frame;
   }
 
-  function setup() {
+  function setup(options: { exhausted?: boolean; signal?: AbortSignal } = {}) {
     const calls: string[] = [];
     const restarts: number[] = [];
     let killCalls = 0;
+    let endCalls = 0;
+    let closeCalls = 0;
     let onData: (chunk: Buffer) => void = () => {};
     let onClose: (code: number) => void = () => {};
+    let onStreamDone: () => void = () => {};
+    const close = (code: number) => {
+      closeCalls++;
+      onClose(code);
+    };
     const bridge = {
       proc: {
         kill: () => {
           killCalls++;
           // The real in-process transport turns kill() into onClose(1) synchronously.
-          onClose(1);
+          close(1);
           return true;
         },
       },
-      alive: true,
+      get alive() {
+        return closeCalls === 0;
+      },
       lastStderr: () => "",
       write: () => {},
-      end: () => {},
+      end: () => {
+        endCalls++;
+      },
       onData: (cb: (chunk: Buffer) => void) => {
         onData = cb;
       },
       onClose: (cb: (code: number) => void) => {
         onClose = cb;
+      },
+      onStreamDone: (cb: () => void) => {
+        onStreamDone = cb;
       },
     };
     const writer = {
@@ -807,7 +827,9 @@ describe("retriable Cursor end-stream errors", () => {
       start() {},
       text() {},
       thinking() {},
-      toolCall() {},
+      toolCall(exec: { toolCallId: string }) {
+        calls.push(`tool:${exec.toolCallId}`);
+      },
       done(reason: string) {
         calls.push(`done:${reason}`);
         this.closed = true;
@@ -819,7 +841,7 @@ describe("retriable Cursor end-stream errors", () => {
     };
     const idleRetry = {
       currentAttempt: 1,
-      maxRetries: 5,
+      maxRetries: options.exhausted ? 0 : 5,
       recoverBeforeRetry: true,
       restart(nextAttempt: number) {
         restarts.push(nextAttempt);
@@ -831,7 +853,7 @@ describe("retriable Cursor end-stream errors", () => {
       bridge,
       heartbeatTimer,
       new Map(),
-      [],
+      [create(McpToolDefinitionSchema, { name: "read", toolName: "read" })],
       {} as never,
       "claude-4.5-sonnet",
       "bridge-endstream",
@@ -839,7 +861,7 @@ describe("retriable Cursor end-stream errors", () => {
       [],
       { userText: "hi", steps: [] },
       writer as never,
-      undefined,
+      options.signal ? { signal: options.signal } : undefined,
       "req-endstream",
       idleRetry as never,
       0,
@@ -850,7 +872,15 @@ describe("retriable Cursor end-stream errors", () => {
       get killCalls() {
         return killCalls;
       },
+      get endCalls() {
+        return endCalls;
+      },
+      get closeCalls() {
+        return closeCalls;
+      },
       onData,
+      onStreamDone,
+      close,
       heartbeatTimer,
     };
   }
@@ -865,6 +895,8 @@ describe("retriable Cursor end-stream errors", () => {
     clearInterval(harness.heartbeatTimer);
 
     expect(harness.restarts).toEqual([2]);
+    expect(harness.closeCalls).toBe(1);
+    expect(harness.endCalls).toBe(0);
     expect(harness.calls).toEqual([]);
   });
 
@@ -894,5 +926,133 @@ describe("retriable Cursor end-stream errors", () => {
 
     expect(harness.restarts).toEqual([]);
     expect(harness.calls[0]).toMatch(/^error:Connect error invalid_argument: model does not exist/);
+  });
+
+  it.each(["resource_exhausted", "http_429"])(
+    "cleans up the exhausted %s attempt before late EOF or close",
+    (code) => {
+      const controller = new AbortController();
+      const harness = setup({ exhausted: true, signal: controller.signal });
+      try {
+        harness.onData(endStreamErrorFrame(code, "fixture refusal"));
+        // HTTP 429 destroys the session synchronously after delivering the end frame.
+        if (code === "http_429") harness.close(1);
+        else {
+          harness.onStreamDone();
+          harness.close(0);
+        }
+        expect(harness.calls).toHaveLength(1);
+        expect(harness.calls[0]).toStartWith(`error:Connect error ${code}: fixture refusal`);
+        expect(harness.restarts).toEqual([]);
+        expect(harness.killCalls).toBe(0);
+        expect(harness.endCalls).toBe(1);
+        expect(harness.closeCalls).toBe(1);
+        expect(harness.heartbeatTimer.hasRef()).toBe(false);
+        expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+        expect(activeBridges.has("bridge-endstream")).toBe(false);
+      } finally {
+        clearInterval(harness.heartbeatTimer);
+        destroyAllIdleBridges();
+      }
+    },
+  );
+
+  function serverFrame(message: AgentServerMessage["message"]) {
+    return frameConnectMessage(
+      toBinary(AgentServerMessageSchema, create(AgentServerMessageSchema, { message })),
+    );
+  }
+
+  function toolFrame(toolCallId: string) {
+    return serverFrame({
+      case: "execServerMessage",
+      value: create(ExecServerMessageSchema, {
+        id: 1,
+        execId: toolCallId,
+        message: {
+          case: "mcpArgs",
+          value: create(McpArgsSchema, { toolName: "read", toolCallId }),
+        },
+      }),
+    });
+  }
+
+  it("publishes a tool staged in the same chunk as the end error", () => {
+    const harness = setup({ exhausted: true });
+    try {
+      harness.onData(
+        Buffer.concat([
+          toolFrame("call-1"),
+          endStreamErrorFrame("invalid_argument", "fixture error"),
+        ]),
+      );
+      expect(harness.calls).toEqual(["tool:call-1", "done:toolUse"]);
+      expect(harness.endCalls).toBe(0);
+      harness.close(1);
+      expect(activeBridges.has("bridge-endstream")).toBe(false);
+    } finally {
+      clearInterval(harness.heartbeatTimer);
+    }
+  });
+
+  it("saves a newer checkpoint once before closing a published tool pause", () => {
+    const controller = new AbortController();
+    const harness = setup({ signal: controller.signal });
+    const convKey = "conv-endstream";
+    const checkpointWrites: Array<Uint8Array | null> = [];
+    const stored: StoredConversation = {
+      conversationId: "tool-checkpoint",
+      get checkpoint() {
+        return checkpointWrites.at(-1) ?? null;
+      },
+      set checkpoint(value) {
+        checkpointWrites.push(value);
+      },
+      sessionScoped: false,
+      blobStore: new Map(),
+      lastAccessMs: 0,
+    };
+    conversationStates.set(convKey, stored);
+    const checkpoint = create(ConversationStateStructureSchema, {
+      pendingToolCalls: ["published"],
+    });
+    const checkpointBytes = toBinary(ConversationStateStructureSchema, checkpoint);
+    try {
+      harness.onData(toolFrame("published"));
+      expect(harness.calls).toEqual(["tool:published", "done:toolUse"]);
+      expect(activeBridges.has("bridge-endstream")).toBe(true);
+      harness.onData(serverFrame({ case: "conversationCheckpointUpdate", value: checkpoint }));
+      harness.onData(
+        Buffer.concat([
+          endStreamErrorFrame("invalid_argument", "fixture error"),
+          toolFrame("unpublished"),
+        ]),
+      );
+      harness.onStreamDone();
+      harness.close(0);
+
+      expect(checkpointWrites.filter((value) => value !== null)).toEqual([checkpointBytes]);
+      expect(stored.midPausePendingToolCalls).toEqual([
+        { toolCallId: "published", toolName: "read" },
+      ]);
+      const recovered = planRecovery({
+        stored,
+        completedTurns: [],
+        toolResults: [{ toolCallId: "published", content: "result" }],
+        requestId: "req-endstream",
+        convKey,
+      });
+      expect(recovered.kind).toBe("recover");
+      if (recovered.kind === "recover") expect(recovered.checkpoint).toEqual(checkpointBytes);
+      expect(harness.calls).toEqual(["tool:published", "done:toolUse"]);
+      expect(harness.endCalls).toBe(1);
+      expect(harness.closeCalls).toBe(1);
+      expect(activeBridges.has("bridge-endstream")).toBe(false);
+      expect(harness.heartbeatTimer.hasRef()).toBe(false);
+      expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    } finally {
+      conversationStates.delete(convKey);
+      clearInterval(harness.heartbeatTimer);
+    }
   });
 });

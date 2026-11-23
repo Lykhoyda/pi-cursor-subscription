@@ -240,23 +240,49 @@ export function lifecycleLog(event: string, data?: Record<string, unknown>): voi
   debugLog(`lifecycle.${event}`, data);
 }
 
-/** Every stream_start in a lifecycle log must have a later bridge_close. */
+/** Several writers can share a bridge, but every physical bridge must close. */
 export function bridgeCloseGaps(lifecycleText: string): { started: number; open: string[] } {
-  const started: string[] = [];
-  const closed = new Set<string>();
+  let started = 0;
+  const openBridges = new Map<string, string>();
+  const legacyCounts = new Map<string, number>();
   for (const line of lifecycleText.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!line.trim()) continue;
     try {
-      const event = JSON.parse(trimmed) as { event?: string; requestId?: string };
-      if (typeof event.requestId !== "string") continue;
-      if (event.event === "stream_start") started.push(event.requestId);
-      if (event.event === "bridge_close") closed.add(event.requestId);
+      const record = JSON.parse(line) as {
+        event?: string;
+        requestId?: string;
+        bridgeId?: number;
+        pid?: number;
+      } | null;
+      if (!record || (record.event !== "stream_start" && record.event !== "bridge_close")) continue;
+      const { requestId, bridgeId, pid } = record;
+      const isStart = record.event === "stream_start";
+      if (typeof bridgeId === "number") {
+        const key = `${pid ?? ""}:${bridgeId}`;
+        if (isStart) {
+          started++;
+          openBridges.set(key, `${requestId ?? "(unknown request)"} (bridge ${bridgeId})`);
+        } else {
+          openBridges.delete(key);
+        }
+      } else if (typeof requestId === "string") {
+        const count = legacyCounts.get(requestId) ?? 0;
+        if (isStart) {
+          started++;
+          legacyCounts.set(requestId, count + 1);
+        } else if (count > 0) {
+          legacyCounts.set(requestId, count - 1);
+        }
+      }
     } catch {
       // A torn final line is not a bridge lifecycle event.
     }
   }
-  return { started: started.length, open: started.filter((id) => !closed.has(id)) };
+  const open = [...openBridges.values()];
+  for (const [requestId, count] of legacyCounts) {
+    for (let i = 0; i < count; i++) open.push(requestId);
+  }
+  return { started, open };
 }
 
 export type MetricEmitter = (event: string, data: Record<string, unknown>) => void;
