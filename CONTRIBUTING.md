@@ -38,15 +38,15 @@ bun run smoke:gate         # Unattended smokes with individual verdicts
 
 The Pi smokes resolve credentials through the [authentication cascade](README.md#authentication) and log the credential source without printing the token. Their Pi subprocesses inherit the environment and remain subject to the model-selection requirements documented there. The standalone models, stream, and wire smokes require `CURSOR_ACCESS_TOKEN` in their environment; `smoke:gate` supplies its resolved token to each leg through that variable.
 
-`smoke:pi-grok` prefers a live Grok 4.7 id from the provider catalog and falls back to Grok 4.6. `smoke:pi-opus` selects Opus 5.5 from the live catalog and fails if it is unavailable or the requested thinking level is unsupported. Both build `dist/`, run `pi --print --mode json` with only this extension loaded, and assert a non-empty streamed reply on `provider=cursor` / `api=cursor-native` plus a `bridge_close` for every `stream_start` in the lifecycle log.
+`smoke:pi-grok` prefers a live Grok 4.7 id from the provider catalog and falls back to Grok 4.6. `smoke:pi-opus` selects Opus 5.5 from the live catalog and fails if it is unavailable or the requested thinking level is unsupported. Both build `dist/` and run `pi --print --mode json` with only this extension loaded. A pass requires a non-empty streamed reply on `provider=cursor` / `api=cursor-native` and a close for every physical bridge, including retries.
 
-The Grok and Opus smokes fail on an `UNHANDLED exec case` warning or its `exec_unknown_shape` lifecycle event, even when Pi exits successfully. The diagnostic reports the exec case or protobuf field number when available. An unhandled exec in the Grok leg fails `smoke:gate`.
+The Pi smokes report `NOT RUN` (exit 3) when the final assistant response for the expected Cursor model carries a typed `resource_exhausted` or `http_429` refusal, the turn settles, Pi exits naturally with code 0, and every bridge closes. Timeouts, nonzero Pi exits, missing bridge closes, and unhandled execs fail the smoke (exit 1). An unhandled exec diagnostic reports the exec case or protobuf field number when available.
 
 Both support `CURSOR_SMOKE_THINKING` (default `low`), `CURSOR_SMOKE_PROMPT`, `CURSOR_SMOKE_TIMEOUT_MS`, and `PI_BIN`. `CURSOR_SMOKE_MODEL` overrides Grok selection only; it cannot redirect the Opus smoke.
 
 `smoke:pi-firstmate` loads `.pi/extensions/fm-primary-pi-watch.ts` from `CURSOR_SMOKE_FIRSTMATE` and checks the lifecycle log's `toolNames` for `bash` and `fm_watch_arm_pi`. `FM_HOME` is a temp dir, so the smoke does not write Firstmate state into that checkout.
 
-`smoke:gate` runs the legs defined in [`scripts/smoke-gate.ts`](scripts/smoke-gate.ts) sequentially and SIGKILLs each at its deadline. It exits 0 if all passed, 1 if a leg failed, or 3 if nothing failed but a leg could not run. `smoke:pi-opus` is not a gate leg; run it explicitly. A quota-exhausted plan or a `resource_exhausted` refusal reports the affected Pi legs as NOT-RUN, never PASS; `smoke:auth` is excluded because it needs an interactive sign-in. `.no-mistakes.yaml` runs the smoke gate as a custom gate after lint (no-mistakes ≥ v1.74.0; gates are read from the default branch only).
+`smoke:gate` runs the legs defined in [`scripts/smoke-gate.ts`](scripts/smoke-gate.ts) sequentially and SIGKILLs each at its deadline. It exits 0 if all passed, 1 if a leg failed, or 3 if nothing failed but a leg could not run. It reports `NOT-RUN` for a quota-exhausted plan at preflight or an affected Pi smoke that exits 3 with its refusal marker. Run `smoke:pi-opus` and interactive `smoke:auth` separately. `.no-mistakes.yaml` runs the smoke gate as a custom gate after lint (no-mistakes ≥ v1.74.0; gates are read from the default branch only).
 
 ## Generated code
 
@@ -93,6 +93,8 @@ and thinking level draw from available included usage before setting the model, 
 that the account cannot fall back to paid usage. Check billing eligibility in the account's
 usage dashboard. If the route cannot be confirmed, leave `CURSOR_SMOKE_INCLUDED_MODEL`
 unset. Exit 0 means every step passed, exit 1 means a step failed, and exit 3 means the package
-checks passed and the live turn is `NOT RUN`. `PI_BIN` selects the Pi executable.
+checks passed and the live turn is `NOT RUN`. A typed Cursor usage refusal can also return
+exit 3 once Pi exits naturally with code 0 and all retry bridges close. `PI_BIN` selects the
+Pi executable.
 
 Pending changesets on `main` open a `chore: version packages` PR. Merging that PR tags `vX.Y.Z` and dispatches `publish.yml`, which publishes to npm with OIDC (trusted publisher workflow filename must stay `publish.yml`). Other changeset-free pushes to `main` do not publish. Contributors must not publish the package or modify release credentials.

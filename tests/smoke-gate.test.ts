@@ -30,6 +30,26 @@ describe("classifyLeg", () => {
       reason: "smoke-wire: FAILED — response did not decode",
     });
   });
+
+  it("requires exit 3 and the exact marker from the expected Pi leg", () => {
+    const name = "pi-grok";
+    const stdout = "[smoke-pi-grok] NOT RUN pi: Cursor usage refused (resource_exhausted)\n";
+    expect(classifyLeg({ ...leg, name, code: 3, stdout })).toEqual({
+      status: "NOT-RUN",
+      reason: "Cursor usage refused (resource_exhausted)",
+    });
+    for (const code of [0, 1, null]) {
+      expect(classifyLeg({ ...leg, name, code, stdout }).status).toBe("FAIL");
+    }
+    expect(classifyLeg({ ...leg, name: "pi-firstmate", code: 3, stdout }).status).toBe("FAIL");
+    expect(classifyLeg({ ...leg, name, code: 3, stdout: `prefix ${stdout}` }).status).toBe("FAIL");
+    expect(classifyLeg({ ...leg, name, code: 1, stderr: "failed while logging 429" }).status).toBe(
+      "FAIL",
+    );
+    expect(classifyLeg({ ...leg, name, code: 3, stdout, timedOut: true }).reason).toBe(
+      "no completion within 60s",
+    );
+  });
 });
 
 describe("premiumQuotaExhausted", () => {

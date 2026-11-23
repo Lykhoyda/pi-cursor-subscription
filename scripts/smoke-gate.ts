@@ -51,15 +51,31 @@ export function classifyLeg(result: {
   stderr: string;
   timedOut: boolean;
   deadlineMs: number;
+  name?: string;
 }): Verdict {
   if (result.timedOut) {
     return { status: "FAIL", reason: `no completion within ${result.deadlineMs / 1000}s` };
   }
-  if (result.code === 0) return { status: "PASS" };
   const output = `${result.stdout}\n${result.stderr}`;
-  const failure = classifyBridgeExit({ exitCode: result.code ?? 1, stderr: output });
-  if (failure.kind === TransportFailureKind.RateLimit) {
-    return { status: "NOT-RUN", reason: "Cursor usage refused: rate limit or resource_exhausted" };
+  if (result.name?.startsWith("pi-")) {
+    const refusals = [
+      ...result.stdout.matchAll(
+        /^\[smoke-(pi-[\w-]+)\] NOT RUN pi: Cursor usage refused \((resource_exhausted|http_429)\)\r?$/gm,
+      ),
+    ];
+    if (result.code === 0 && refusals.length === 0) return { status: "PASS" };
+    if (result.code === 3 && refusals.length === 1 && refusals[0]?.[1] === result.name) {
+      return { status: "NOT-RUN", reason: `Cursor usage refused (${refusals[0][2]})` };
+    }
+  } else {
+    if (result.code === 0) return { status: "PASS" };
+    const failure = classifyBridgeExit({ exitCode: result.code ?? 1, stderr: output });
+    if (failure.kind === TransportFailureKind.RateLimit) {
+      return {
+        status: "NOT-RUN",
+        reason: "Cursor usage refused: rate limit or resource_exhausted",
+      };
+    }
   }
   const lastLine = output
     .split("\n")
@@ -115,7 +131,10 @@ async function main(): Promise<never> {
       });
       const tail = `${result.stdout}\n${result.stderr}`.trim().split("\n").slice(-TAIL_LINES);
       console.log(redact(tail.join("\n")));
-      verdicts.set(leg.name, classifyLeg({ ...result, deadlineMs: leg.deadlineMs }));
+      verdicts.set(
+        leg.name,
+        classifyLeg({ ...result, name: leg.name, deadlineMs: leg.deadlineMs }),
+      );
     }
   }
 

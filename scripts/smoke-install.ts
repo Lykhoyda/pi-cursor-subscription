@@ -5,18 +5,10 @@ import { basename, join, resolve } from "node:path";
 import { getCursorAccessTokenFromEnv } from "../src/auth/oauth.js";
 import { augmentCursorModels } from "../src/models/parameterized.js";
 import { processModels } from "../src/models/processing.js";
-import { bridgeCloseGaps } from "../src/stream/debug-log.js";
 import { discoverCursorCatalog } from "../src/stream/model-discovery.js";
-import { TransportFailureKind, classifyBridgeExit } from "../src/stream/transport-errors.js";
 import { ThinkingLevel } from "../src/types/enums.js";
 import { redactSecrets } from "../src/utils/security.js";
-import {
-  locatePi,
-  parseJsonLines,
-  run,
-  summarizeAssistant,
-  unhandledExecDiagnostic,
-} from "./smoke-pi-grok.js";
+import { locatePi, parseJsonLines, run, checkPiPrintOutcome } from "./smoke-pi-grok.js";
 
 const PACKAGE = "@lykhoyda/pi-cursor-subscription";
 const VERSION = /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/;
@@ -264,32 +256,11 @@ async function smoke(input: string): Promise<number> {
     const lifecycleText = await Bun.file(lifecycle)
       .text()
       .catch(() => "");
-    const execDiagnostic = unhandledExecDiagnostic(lifecycleText, turn.stderr);
-    if (execDiagnostic) throw new Error(execDiagnostic);
-    const { finalMessage, deltaCount, finalText, errorEvents } = summarizeAssistant(
-      parseJsonLines(turn.stdout).events,
-    );
-    const failure = classifyBridgeExit({
-      exitCode: turn.code ?? 1,
-      stderr: `${turn.stderr}\n${finalMessage?.errorMessage ?? ""}`,
-    });
-    if (!turn.timedOut && failure.kind === TransportFailureKind.RateLimit) {
-      return skip("Cursor refused the turn due to a usage limit");
-    }
-    requireSuccess(turn);
-    if (
-      errorEvents.length ||
-      finalMessage?.provider !== "cursor" ||
-      finalMessage.api !== "cursor-native" ||
-      finalMessage.model !== modelId ||
-      finalMessage.stopReason !== "stop" ||
-      !deltaCount ||
-      !finalText.trim()
-    ) {
-      throw new Error("Pi did not stream a completed reply from the expected Cursor model");
-    }
-    const gaps = bridgeCloseGaps(lifecycleText);
-    if (!gaps.started || gaps.open.length) throw new Error("Cursor stream lifecycle did not close");
+    const outcome = checkPiPrintOutcome(turn, lifecycleText, { modelId, timeoutMs: 120_000 });
+    if (outcome.code === 1) throw new Error(outcome.reason);
+    report(`lifecycle: streams=${outcome.streams} all closed`);
+    if (outcome.code === 3) return skip(`Cursor usage refused (${outcome.refusal})`);
+    const { deltaCount } = outcome.summary;
     const routes = parseJsonLines<{ event?: string; modelId?: string }>(lifecycleText)
       .events.filter(
         (event) => event?.event === "request_size" && event.modelId && MODEL_ID.test(event.modelId),

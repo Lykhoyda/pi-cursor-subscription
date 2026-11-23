@@ -48,8 +48,8 @@ if (import.meta.main) {
     const raw = effort ? (model.rawModelByEffort?.[effort] ?? model.id) : model.id;
     log("model", `id=${model.id} thinking=${thinking} -> cursor=${raw}`);
     await buildDist();
-    await runPi(selection);
-    console.log("smoke-pi-opus: ok");
+    process.exitCode = await runPi(selection);
+    if (process.exitCode === 0) console.log("smoke-pi-opus: ok");
   } catch (error) {
     fail("opus", error instanceof Error ? error.message : String(error));
   }

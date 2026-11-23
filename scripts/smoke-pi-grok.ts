@@ -5,7 +5,7 @@
  * registers the `cursor` provider, `--model` resolves to a real Cursor Grok variant
  * (4.7 when the account lists it, otherwise 4.6), and a trivial prompt streams a
  * non-empty reply back through pi's JSON event stream. The lifecycle log must show
- * a `bridge_close` for every `stream_start`.
+ * every physical bridge close.
  *
  * Usage: bun run smoke:pi-grok
  *
@@ -46,6 +46,7 @@ const REPLY_PREVIEW_CHARS = 200;
 
 interface RunResult {
   code: number | null;
+  signal: NodeJS.Signals | null;
   stdout: string;
   stderr: string;
   timedOut: boolean;
@@ -59,8 +60,9 @@ export interface Selection {
 /** The subset of pi's `--mode json` event lines this smoke reads. */
 interface PiEvent {
   type: string;
-  assistantMessageEvent?: { type: string; delta?: string };
+  assistantMessageEvent?: { type: string; delta?: string; error?: PiAssistantMessage };
   message?: PiAssistantMessage;
+  errorMessage?: string;
 }
 
 interface PiAssistantMessage {
@@ -171,24 +173,27 @@ export function run(
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let spawnFailed = false;
     const timer = timeoutMs
       ? setTimeout(() => {
           timedOut = true;
           child.kill("SIGKILL");
+          child.stdout.destroy();
+          child.stderr.destroy();
         }, timeoutMs)
       : undefined;
-    child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
-    child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+    child.stdout.setEncoding("utf8").on("data", (data: string) => (stdout += data));
+    child.stderr.setEncoding("utf8").on("data", (data: string) => (stderr += data));
     // The child can exit before reading the optional RPC request.
     child.stdin.on("error", () => {});
     child.stdin.end(options?.input);
     child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({ code: -1, stdout, stderr: `${stderr}\n${error.message}`, timedOut });
+      spawnFailed = true;
+      stderr += `\n${error.message}`;
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       clearTimeout(timer);
-      resolve({ code, stdout, stderr, timedOut });
+      resolve({ code: spawnFailed ? -1 : code, signal, stdout, stderr, timedOut });
     });
   });
 }
@@ -228,33 +233,71 @@ export function parseJsonLines<T = PiEvent>(stdout: string): { events: T[]; nonJ
   return { events, nonJson };
 }
 
-export function summarizeAssistant(events: PiEvent[]) {
+function summarizeAssistant(events: PiEvent[], modelId: string) {
+  let pendingDeltas = 0;
+  let pendingText = "";
   let deltaCount = 0;
   let streamed = "";
-  const errorEvents: unknown[] = [];
+  let settled = false;
+  const errorEvents: Array<{ message?: string; assistant?: PiAssistantMessage }> = [];
+  const refusedMessages = new Set<string>();
   let finalMessage: PiAssistantMessage | undefined;
 
   for (const event of events) {
+    if (!event) continue;
     if (event.type === "message_update") {
       const inner = event.assistantMessageEvent;
       if (inner?.type === "text_delta" && typeof inner.delta === "string") {
-        deltaCount += 1;
-        streamed += inner.delta;
+        pendingDeltas++;
+        pendingText += inner.delta;
       }
-      if (inner?.type === "error") errorEvents.push(inner);
+      if (inner?.type === "error") {
+        errorEvents.push({ message: inner.error?.errorMessage, assistant: inner.error });
+      }
     }
-    if (event.type === "error") errorEvents.push(event);
+    if (event.type === "error") errorEvents.push({ message: event.errorMessage });
     if (event.type === "message_end" && event.message?.role === "assistant") {
       finalMessage = event.message;
+      deltaCount = pendingDeltas;
+      streamed = pendingText;
+      pendingDeltas = 0;
+      pendingText = "";
+      settled = false;
+      if (finalMessage.errorMessage && usageRefusal(finalMessage, modelId)) {
+        refusedMessages.add(finalMessage.errorMessage);
+      }
     }
+    if (event.type === "agent_settled") settled = true;
   }
 
-  const finalText = (finalMessage?.content ?? [])
-    .filter((part) => part.type === "text" && typeof part.text === "string")
+  const content = finalMessage?.content;
+  const finalText = (Array.isArray(content) ? content : [])
+    .filter((part) => part?.type === "text" && typeof part.text === "string")
     .map((part) => part.text)
     .join("");
 
-  return { deltaCount, streamed, finalText, finalMessage, errorEvents };
+  const unrelatedError = errorEvents.some(
+    ({ message, assistant }) =>
+      !message || !refusedMessages.has(message) || (assistant && !usageRefusal(assistant, modelId)),
+  );
+  return { deltaCount, streamed, finalText, finalMessage, settled, unrelatedError };
+}
+
+type UsageRefusalCode = "resource_exhausted" | "http_429";
+
+function usageRefusal(message: PiAssistantMessage | undefined, modelId: string) {
+  if (
+    message?.role !== "assistant" ||
+    message.provider !== "cursor" ||
+    message.api !== "cursor-native" ||
+    message.model !== modelId ||
+    message.stopReason !== "error" ||
+    typeof message.errorMessage !== "string"
+  ) {
+    return undefined;
+  }
+  const code = /^Connect error (resource_exhausted|http_429):/.exec(message.errorMessage)?.[1];
+  return code as UsageRefusalCode | undefined;
 }
 
 function knownExecCase(value: unknown): string | undefined {
@@ -293,7 +336,78 @@ export function unhandledExecDiagnostic(lifecycleText: string, stderr: string): 
   return undefined;
 }
 
-export async function runPi({ model, thinking }: Selection): Promise<void> {
+type PrintOutcome =
+  | { code: 1; step: string; reason: string; details?: string }
+  | { code: 3; refusal: UsageRefusalCode; streams: number }
+  | { code: 0; summary: ReturnType<typeof summarizeAssistant>; streams: number };
+
+export function checkPiPrintOutcome(
+  result: RunResult,
+  lifecycleText: string,
+  options: { modelId: string; timeoutMs: number; missingTools?: readonly string[] },
+): PrintOutcome {
+  const { events, nonJson } = parseJsonLines(result.stdout);
+  const summary = summarizeAssistant(events, options.modelId);
+  const message = summary.finalMessage;
+  const refusal = usageRefusal(message, options.modelId);
+  const refusalContext = refusal ? ` (Cursor usage refused: ${refusal})` : "";
+  const failure = (step: string, reason: string, details?: string): PrintOutcome => ({
+    code: 1,
+    step,
+    reason,
+    details,
+  });
+  if (result.timedOut)
+    return failure(
+      "pi",
+      `no completion within ${options.timeoutMs}ms${refusalContext}`,
+      result.stderr,
+    );
+  if (result.signal || result.code !== 0) {
+    const exit = result.signal
+      ? `terminated by ${result.signal}`
+      : `exited with code ${result.code}`;
+    return failure("pi", exit + refusalContext, result.stderr);
+  }
+  const execDiagnostic = unhandledExecDiagnostic(lifecycleText, result.stderr);
+  if (execDiagnostic) return failure("lifecycle", execDiagnostic);
+  if (options.missingTools?.length)
+    return failure("tools", `Cursor request missing ${options.missingTools.join(", ")}`);
+  if (!message) return failure("stream", "no assistant message_end in pi output", result.stderr);
+  if (nonJson.some((line) => line.startsWith("{")))
+    return failure("stream", "incomplete or invalid Pi JSON event");
+  const { provider, api, model, stopReason } = message;
+  if (provider !== "cursor" || api !== "cursor-native")
+    return failure(
+      "stream",
+      `reply did not come through this provider (provider=${provider} api=${api})`,
+    );
+  if (model !== options.modelId)
+    return failure("stream", `reply model mismatch: expected ${options.modelId}, got ${model}`);
+  if (summary.unrelatedError) return failure("stream", "pi reported unrelated error events");
+  if (refusal && !summary.settled)
+    return failure("stream", `assistant turn did not settle${refusalContext}`);
+  if (!refusal && stopReason !== "stop")
+    return failure("stream", `assistant stopReason=${stopReason}`, message.errorMessage);
+
+  const gaps = bridgeCloseGaps(lifecycleText);
+  if (!gaps.started) return failure("lifecycle", "no stream_start in the lifecycle log");
+  if (gaps.open.length)
+    return failure("lifecycle", `bridge never closed for ${gaps.open.join(", ")}${refusalContext}`);
+  if (refusal) return { code: 3, refusal, streams: gaps.started };
+  if (summary.deltaCount === 0) return failure("stream", "no text_delta events streamed");
+  if (!summary.finalText.trim()) return failure("stream", "assistant reply text is empty");
+  return { code: 0, summary, streams: gaps.started };
+}
+
+export function reportPiPrintOutcome(outcome: PrintOutcome): 0 | 3 {
+  if (outcome.code === 1) fail(outcome.step, outcome.reason, outcome.details);
+  log("lifecycle", `streams=${outcome.streams} all closed`);
+  if (outcome.code === 3) log("NOT RUN pi", `Cursor usage refused (${outcome.refusal})`);
+  return outcome.code;
+}
+
+export async function runPi({ model, thinking }: Selection): Promise<0 | 3> {
   const piBin = locatePi();
   const version = await run(piBin, ["--version"]);
   log("pi", `bin=${piBin} version=${(version.stdout || version.stderr).trim() || "unknown"}`);
@@ -327,72 +441,37 @@ export async function runPi({ model, thinking }: Selection): Promise<void> {
   const sandbox = mkdtempSync(join(tmpdir(), "pi-cursor-grok-"));
   const lifecycleLog = join(sandbox, "lifecycle.jsonl");
   const startedAt = Date.now();
-  const result = await run(piBin, args, timeoutMs, {
-    env: { ...process.env, PI_CURSOR_LIFECYCLE_LOG: lifecycleLog },
-  });
-  const lifecycleText = existsSync(lifecycleLog) ? readFileSync(lifecycleLog, "utf8") : "";
-  rmSync(sandbox, { recursive: true, force: true });
-  const elapsedMs = Date.now() - startedAt;
-
-  if (result.timedOut) fail("pi", `no completion within ${timeoutMs}ms`, result.stderr);
-  const execDiagnostic = unhandledExecDiagnostic(lifecycleText, result.stderr);
-  if (execDiagnostic) fail("lifecycle", execDiagnostic);
-  if (result.code !== 0) {
-    fail("pi", `exited with code ${result.code}`, `${result.stderr}\n${result.stdout}`);
+  let outcome: PrintOutcome;
+  try {
+    const result = await run(piBin, args, timeoutMs, {
+      env: { ...process.env, PI_CURSOR_LIFECYCLE_LOG: lifecycleLog },
+    });
+    const lifecycleText = existsSync(lifecycleLog) ? readFileSync(lifecycleLog, "utf8") : "";
+    outcome = checkPiPrintOutcome(result, lifecycleText, { modelId: model.id, timeoutMs });
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
   }
-
-  const { events, nonJson } = parseJsonLines(result.stdout);
-  const summary = summarizeAssistant(events);
-
-  if (summary.errorEvents.length > 0) {
-    fail("stream", "pi reported error events", JSON.stringify(summary.errorEvents, null, 2));
-  }
-  if (!summary.finalMessage) {
-    fail(
+  if (outcome.code === 0) {
+    const { finalMessage, finalText, deltaCount, streamed } = outcome.summary;
+    const usage = finalMessage?.usage;
+    const preview = finalText.replace(/\s+/g, " ").trim().slice(0, REPLY_PREVIEW_CHARS);
+    log(
       "stream",
-      "no assistant message_end in pi output",
-      `${result.stderr}\n${nonJson.join("\n")}`,
+      `text_delta=${deltaCount} streamedChars=${streamed.length} elapsed=${Date.now() - startedAt}ms ` +
+        `usage(in=${usage?.input ?? "?"} out=${usage?.output ?? "?"})`,
     );
+    log("reply", `"${preview}"`);
+    if (!/pong/i.test(finalText)) {
+      log("reply", "note: reply did not contain the requested word; streaming still verified");
+    }
   }
-  const { provider, api, model: reportedModel, stopReason, usage } = summary.finalMessage;
-  if (provider !== "cursor" || api !== "cursor-native") {
-    fail("stream", `reply did not come through this provider (provider=${provider} api=${api})`);
-  }
-  if (reportedModel !== model.id) {
-    fail("stream", `reply model mismatch: expected ${model.id}, got ${reportedModel}`);
-  }
-  if (stopReason !== "stop") {
-    fail(
-      "stream",
-      `assistant stopReason=${stopReason}`,
-      summary.finalMessage.errorMessage ?? JSON.stringify(summary.finalMessage, null, 2),
-    );
-  }
-  if (summary.deltaCount === 0) fail("stream", "no text_delta events streamed");
-  if (!summary.finalText.trim()) fail("stream", "assistant reply text is empty");
-
-  const preview = summary.finalText.replace(/\s+/g, " ").trim().slice(0, REPLY_PREVIEW_CHARS);
-  log(
-    "stream",
-    `text_delta=${summary.deltaCount} streamedChars=${summary.streamed.length} elapsed=${elapsedMs}ms ` +
-      `usage(in=${usage?.input ?? "?"} out=${usage?.output ?? "?"})`,
-  );
-  log("reply", `"${preview}"`);
-  if (!/pong/i.test(summary.finalText)) {
-    log("reply", "note: reply did not contain the requested word; streaming still verified");
-  }
-  const gaps = bridgeCloseGaps(lifecycleText);
-  if (gaps.started === 0) fail("lifecycle", "no stream_start in the lifecycle log");
-  if (gaps.open.length > 0) {
-    fail("lifecycle", `bridge never closed for ${gaps.open.join(", ")}`);
-  }
-  log("lifecycle", `streams=${gaps.started} all closed`);
+  return reportPiPrintOutcome(outcome);
 }
 
 if (import.meta.main) {
   const accessToken = await resolveCredentialSource();
   const selection = await pickGrokModel(accessToken);
   await buildDist();
-  await runPi(selection);
-  console.log("smoke-pi-grok: ok");
+  process.exitCode = await runPi(selection);
+  if (process.exitCode === 0) console.log("smoke-pi-grok: ok");
 }
