@@ -32,6 +32,8 @@ const SESSION_ARGS = [
   "--no-themes",
 ];
 const PROMPT = "Reply with exactly one word: pong";
+const TAIL_LINES = 20;
+const TAIL_LINE_CHARS = 400;
 type Stage = "install" | "list" | "load" | "live turn";
 
 interface CommandResponse {
@@ -74,8 +76,9 @@ async function artifactSpec(input: string) {
 async function smoke(input: string): Promise<number> {
   const pi = locatePi();
   const accessToken = getCursorAccessTokenFromEnv();
-  const report = (line: string) =>
-    console.log(redactSecrets(accessToken ? line.replaceAll(accessToken, "[redacted]") : line));
+  const scrub = (text: string) =>
+    redactSecrets(accessToken ? text.replaceAll(accessToken, "[redacted]") : text);
+  const report = (line: string) => console.log(scrub(line));
   const sandbox = realpathSync(mkdtempSync(join(tmpdir(), "pi-cursor-install-")));
   const verdicts: Record<Stage, string> = {
     install: "NOT RUN",
@@ -84,6 +87,7 @@ async function smoke(input: string): Promise<number> {
     "live turn": "NOT RUN (package checks did not complete)",
   };
   let stage: Stage = "install";
+  let lastOutput = "";
   try {
     const artifact = await artifactSpec(input);
     report(`artifact: ${artifact.identity}`);
@@ -121,19 +125,21 @@ async function smoke(input: string): Promise<number> {
       npm_config_ignore_scripts: "true",
       FORCE_COLOR: "0",
     };
-    function runPi(
+    const hideTarball = (text: string) =>
+      artifact.tarball ? text.replaceAll(artifact.tarball, "<tarball>") : text;
+    async function runPi(
       args: string[],
       options?: { input?: string; live?: boolean; timeoutMs?: number },
     ) {
-      const shown = args.map((arg) =>
-        artifact.tarball ? arg.replace(artifact.tarball, "<tarball>") : arg,
-      );
+      const shown = args.map(hideTarball);
       report(`  pi ${shown.map((arg) => (/\s/.test(arg) ? JSON.stringify(arg) : arg)).join(" ")}`);
-      return run(pi, args, options?.timeoutMs ?? 30_000, {
+      const result = await run(pi, args, options?.timeoutMs ?? 30_000, {
         cwd,
         env: options?.live ? { ...env, CURSOR_ACCESS_TOKEN: accessToken, PI_OFFLINE: "" } : env,
         input: options?.input,
       });
+      lastOutput = scrub(hideTarball(`${result.stdout}\n${result.stderr}`.trim()));
+      return result;
     }
     function requireSuccess(result: Awaited<ReturnType<typeof run>>) {
       if (result.timedOut) throw new Error("Pi timed out");
@@ -234,7 +240,7 @@ async function smoke(input: string): Promise<number> {
         return provider === "cursor" && id === modelId;
       })
     ) {
-      return skip("the installed extension did not list the exact confirmed Cursor model");
+      throw new Error("the installed extension did not list the exact confirmed Cursor model");
     }
 
     const turn = await runPi(
@@ -295,6 +301,14 @@ async function smoke(input: string): Promise<number> {
     verdicts["live turn"] = "PASS";
     return 0;
   } catch (error) {
+    if (lastOutput) {
+      report("  last Pi output:");
+      for (const line of lastOutput.split("\n").slice(-TAIL_LINES)) {
+        report(
+          `  | ${line.length > TAIL_LINE_CHARS ? `${line.slice(0, TAIL_LINE_CHARS)}…` : line}`,
+        );
+      }
+    }
     verdicts[stage] = `FAIL (${error instanceof Error ? error.message : String(error)})`;
     return 1;
   } finally {
