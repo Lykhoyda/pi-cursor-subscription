@@ -1,4 +1,4 @@
-import { expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
@@ -14,23 +14,44 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(import.meta.dir, "..");
-const hostEntry = import.meta.resolve("pi130-coding-agent");
-const hostRoot = resolve(dirname(fileURLToPath(hostEntry)), "..");
+const projectHostEntry = import.meta.resolve("@earendil-works/pi-coding-agent");
+const PINNED_HOSTS = join(import.meta.dir, "fixtures", "pi-hosts");
+const pinnedHostVersions = ["0.86.1", "1.3.0"];
 
-it("loads built dist in official Pi 1.3.0 without extension-local Pi dependencies", () => {
-  const hostPackage = JSON.parse(readFileSync(join(hostRoot, "package.json"), "utf8"));
-  expect(hostPackage.version).toBe("1.3.0");
-  const aiEntry = import.meta.resolve("@earendil-works/pi-ai", hostEntry);
-  const aiRoot = resolve(dirname(fileURLToPath(aiEntry)), "..");
-  expect(JSON.parse(readFileSync(join(aiRoot, "package.json"), "utf8")).version).toBe("1.3.0");
+let pinnedHostsDir = "";
 
+function packageRoot(entry: string): string {
+  return resolve(dirname(fileURLToPath(entry)), "..");
+}
+
+function packageVersion(root: string): string {
+  return JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+}
+
+beforeAll(() => {
   const build = spawnSync(process.execPath, ["run", "build"], { cwd: ROOT, encoding: "utf8" });
   expect(build.status, build.stderr).toBe(0);
 
+  pinnedHostsDir = mkdtempSync(join(tmpdir(), "pi-cursor-hosts-"));
+  copyFileSync(join(PINNED_HOSTS, "package.json"), join(pinnedHostsDir, "package.json"));
+  copyFileSync(join(PINNED_HOSTS, "bun.lock"), join(pinnedHostsDir, "bun.lock"));
+  const install = spawnSync(
+    process.execPath,
+    ["install", "--frozen-lockfile", "--ignore-scripts", "--no-progress"],
+    { cwd: pinnedHostsDir, encoding: "utf8" },
+  );
+  expect(install.status, install.stderr).toBe(0);
+}, 120_000);
+
+afterAll(() => {
+  if (pinnedHostsDir) rmSync(pinnedHostsDir, { recursive: true, force: true });
+});
+
+function loadBuiltExtension(hostRoot: string) {
   // Keep the published entry outside the checkout: Pi supplies its peer APIs
   // through the host loader, just as with an installed extension. Linking Pi
   // here would hide unsupported imports that the host does not virtualize.
-  const fixture = mkdtempSync(join(tmpdir(), "pi-cursor-pi130-"));
+  const fixture = mkdtempSync(join(tmpdir(), "pi-cursor-host-"));
   try {
     mkdirSync(join(fixture, "dist"));
     mkdirSync(join(fixture, "node_modules", "@bufbuild"), { recursive: true });
@@ -54,7 +75,7 @@ it("loads built dist in official Pi 1.3.0 without extension-local Pi dependencie
         "--provider",
         "cursor",
         "--model",
-        "pi130-startup-probe",
+        "pi-startup-probe",
         "startup probe",
       ],
       {
@@ -81,5 +102,28 @@ it("loads built dist in official Pi 1.3.0 without extension-local Pi dependencie
     expect(result.status).toBe(1);
   } finally {
     rmSync(fixture, { recursive: true, force: true });
+  }
+}
+
+describe("built dist without extension-local Pi dependencies", () => {
+  it("loads in the project's Pi host", () => {
+    const aiEntry = import.meta.resolve("@earendil-works/pi-ai");
+    const coreEntry = import.meta.resolve("@earendil-works/pi-agent-core", projectHostEntry);
+    expect(import.meta.resolve("@earendil-works/pi-ai", projectHostEntry)).toBe(aiEntry);
+    expect(import.meta.resolve("@earendil-works/pi-ai", coreEntry)).toBe(aiEntry);
+
+    loadBuiltExtension(packageRoot(projectHostEntry));
+  });
+
+  for (const version of pinnedHostVersions) {
+    it(`loads in official Pi ${version}`, () => {
+      const hostEntry = import.meta.resolve(`pi-${version}`, join(pinnedHostsDir, "package.json"));
+      const hostRoot = packageRoot(hostEntry);
+      expect(packageVersion(hostRoot)).toBe(version);
+      const aiEntry = import.meta.resolve("@earendil-works/pi-ai", hostEntry);
+      expect(packageVersion(packageRoot(aiEntry))).toBe(version);
+
+      loadBuiltExtension(hostRoot);
+    });
   }
 });
