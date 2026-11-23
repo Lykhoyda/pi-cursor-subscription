@@ -160,13 +160,13 @@ export function run(
   cmd: string,
   args: string[],
   timeoutMs?: number,
-  options?: { cwd?: string; env?: NodeJS.ProcessEnv },
+  options?: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string },
 ): Promise<RunResult> {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, {
       cwd: options?.cwd ?? ROOT,
       env: options?.env ?? process.env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
@@ -179,6 +179,9 @@ export function run(
       : undefined;
     child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
     child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+    // The child can exit before reading the optional RPC request.
+    child.stdin.on("error", () => {});
+    child.stdin.end(options?.input);
     child.on("error", (error) => {
       clearTimeout(timer);
       resolve({ code: -1, stdout, stderr: `${stderr}\n${error.message}`, timedOut });
@@ -210,14 +213,14 @@ export function locatePi(): string {
   );
 }
 
-export function parseJsonLines(stdout: string): { events: PiEvent[]; nonJson: string[] } {
-  const events: PiEvent[] = [];
+export function parseJsonLines<T = PiEvent>(stdout: string): { events: T[]; nonJson: string[] } {
+  const events: T[] = [];
   const nonJson: string[] = [];
   for (const line of stdout.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      events.push(JSON.parse(trimmed) as PiEvent);
+      events.push(JSON.parse(trimmed) as T);
     } catch {
       nonJson.push(trimmed);
     }

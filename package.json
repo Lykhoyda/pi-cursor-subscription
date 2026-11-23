@@ -51,6 +51,7 @@
     "smoke:models": "bun scripts/smoke-models.mjs",
     "smoke:stream": "bun scripts/smoke-stream.mjs",
     "smoke:wire": "bun scripts/smoke-wire.mjs",
+    "smoke:install": "bun scripts/smoke-install.ts",
     "smoke:pi-grok": "bun scripts/smoke-pi-grok.ts",
     "smoke:pi-opus": "bun scripts/smoke-pi-opus.ts",
     "smoke:pi-firstmate": "bun scripts/smoke-pi-firstmate.ts",
