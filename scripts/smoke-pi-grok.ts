@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 import { getStartupCursorAccessToken } from "../src/extension/auth.js";
 import { augmentCursorModels } from "../src/models/parameterized.js";
 import { processModels, type ProcessedModel } from "../src/models/processing.js";
+import { ExecServerMessageSchema } from "../src/proto/agent_pb.js";
 import { bridgeCloseGaps } from "../src/stream/debug-log.js";
 import { discoverCursorCatalog } from "../src/stream/native-core.js";
 import type { PiThinkingLevel } from "../src/types/enums.js";
@@ -253,6 +254,42 @@ export function summarizeAssistant(events: PiEvent[]) {
   return { deltaCount, streamed, finalText, finalMessage, errorEvents };
 }
 
+function knownExecCase(value: unknown): string | undefined {
+  // Case names come from the compiled oneof. Never echo arbitrary log text.
+  return ExecServerMessageSchema.fields.find(
+    (field) => field.oneof?.name === "message" && field.localName === value,
+  )?.localName;
+}
+
+export function unhandledExecDiagnostic(lifecycleText: string, stderr: string): string | undefined {
+  const warning = /^(?:\[cursor-provider\] )?UNHANDLED exec case\b(?:: "([^"\r\n]*)")?/m.exec(
+    `${stderr}\n${lifecycleText}`,
+  );
+  const warningCase = knownExecCase(warning?.[1]);
+  for (const line of lifecycleText.split("\n")) {
+    if (!line.includes('"exec_unknown_shape"')) continue;
+    try {
+      const event = JSON.parse(line) as {
+        event?: string;
+        execCase?: unknown;
+        unknownFields?: unknown;
+      } | null;
+      if (event?.event !== "exec_unknown_shape") continue;
+      const execCase = knownExecCase(event.execCase) ?? warningCase;
+      if (execCase) return `UNHANDLED exec case: ${execCase}`;
+      const field =
+        typeof event.unknownFields === "string"
+          ? /^([1-9]\d{0,8}):wt[0-5]:\d+b(?:,|$)/.exec(event.unknownFields)?.[1]
+          : undefined;
+      return `UNHANDLED exec case: ${field ? `protobuf field ${field}` : "unknown"}`;
+    } catch {
+      // Ignore incomplete JSONL records.
+    }
+  }
+  if (warning) return `UNHANDLED exec case: ${warningCase ?? "unknown"}`;
+  return undefined;
+}
+
 export async function runPi({ model, thinking }: Selection): Promise<void> {
   const piBin = locatePi();
   const version = await run(piBin, ["--version"]);
@@ -295,6 +332,8 @@ export async function runPi({ model, thinking }: Selection): Promise<void> {
   const elapsedMs = Date.now() - startedAt;
 
   if (result.timedOut) fail("pi", `no completion within ${timeoutMs}ms`, result.stderr);
+  const execDiagnostic = unhandledExecDiagnostic(lifecycleText, result.stderr);
+  if (execDiagnostic) fail("lifecycle", execDiagnostic);
   if (result.code !== 0) {
     fail("pi", `exited with code ${result.code}`, `${result.stderr}\n${result.stdout}`);
   }
