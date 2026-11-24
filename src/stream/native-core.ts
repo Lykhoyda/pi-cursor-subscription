@@ -406,6 +406,7 @@ export function createCursorNativeStream(
     writer.start();
 
     (async () => {
+      const shellEnvExtra = [...(config.getShellEnvExtra?.() ?? [])];
       let body = contextToCursorChatCompletionRequest(
         model,
         context,
@@ -429,6 +430,7 @@ export function createCursorNativeStream(
           options as CursorNativeStreamOptions | undefined,
           writer,
           nextDebugRequestId(),
+          shellEnvExtra,
           config.getAccessToken,
         );
       });
@@ -447,6 +449,7 @@ async function handleCursorNativeRequest(
   options: CursorNativeStreamOptions | undefined,
   writer: NativeStreamWriter,
   requestId: string,
+  shellEnvExtra: readonly string[],
   getAccessToken?: (options?: { forceRefresh?: boolean }) => Promise<string>,
 ): Promise<void> {
   let parsedMessages: ParsedMessages;
@@ -579,6 +582,7 @@ async function handleCursorNativeRequest(
             maxMode,
             cursorModelParameters: body.cursor_model_parameters ?? [],
             getAccessToken,
+            shellEnvExtra,
           },
           writer,
           options,
@@ -648,6 +652,7 @@ async function handleCursorNativeRequest(
         requestId,
         streamIdleTimeoutMs: resumeIdleTimeoutMs,
         getAccessToken,
+        shellEnvExtra,
         systemPrompt,
         conversationId: decision.conversationId,
         maxMode,
@@ -703,6 +708,7 @@ async function handleCursorNativeRequest(
         requestId,
         streamIdleTimeoutMs: resumeIdleTimeoutMs,
         getAccessToken,
+        shellEnvExtra,
         systemPrompt,
         conversationId: decision.conversationId,
         maxMode,
@@ -841,6 +847,7 @@ async function handleCursorNativeRequest(
     options,
     requestId,
     getAccessToken,
+    shellEnvExtra,
     recoverBeforeRetry: true,
     systemPrompt: effectiveSystemPrompt,
     conversationId: stored.conversationId,
@@ -871,6 +878,7 @@ function writeNativeStream(
   checkpointRef: CheckpointRef = { current: null },
   preservedMidPauseExecs: PendingExec[] = [],
   clientTranscript: ClientTranscript = liveTranscript(completedTurns),
+  shellEnvExtra?: readonly string[],
 ): void {
   const persistenceTurns = clientTranscript.completedTurns;
   let bridgeId = bridgeIds.get(bridge);
@@ -1283,6 +1291,7 @@ function writeNativeStream(
           undefined,
           convKey,
           nativeExecAbort,
+          shellEnvExtra,
         );
         if (progress === "work") {
           if (parkedExecCase !== undefined) {
@@ -1631,6 +1640,7 @@ interface ResumeContext {
   maxMode: boolean;
   cursorModelParameters: CursorModelParameter[];
   getAccessToken?: (options?: { forceRefresh?: boolean }) => Promise<string>;
+  shellEnvExtra?: readonly string[];
 }
 
 function handleNativeToolResultResume(
@@ -1653,6 +1663,7 @@ function handleNativeToolResultResume(
     maxMode,
     cursorModelParameters,
     getAccessToken,
+    shellEnvExtra,
   } = ctx;
   const {
     bridge,
@@ -1842,6 +1853,7 @@ function handleNativeToolResultResume(
           maxIdleRetries: idleRetry.maxRetries,
           streamIdleTimeoutMs: resumeIdleTimeoutMs,
           getAccessToken,
+          shellEnvExtra,
           systemPrompt,
           conversationId: decision.conversationId,
           maxMode,
@@ -1918,6 +1930,7 @@ function handleNativeToolResultResume(
         maxIdleRetries: idleRetry.maxRetries,
         streamIdleTimeoutMs: resumeIdleTimeoutMs,
         getAccessToken,
+        shellEnvExtra,
         systemPrompt,
         conversationId: decision.conversationId,
         maxMode,
@@ -1949,6 +1962,7 @@ function handleNativeToolResultResume(
     // snapshot so recovery can safely recreate that continuation.
     pendingExecs,
     resumeTranscript,
+    shellEnvExtra,
   );
 }
 
@@ -2130,6 +2144,7 @@ function startNativeStreamWithIdleRetries(input: NativeStreamAttemptInput): void
           { current: null },
           [],
           input.clientTranscript ?? liveTranscript(completedTurns),
+          input.shellEnvExtra,
         );
       };
 

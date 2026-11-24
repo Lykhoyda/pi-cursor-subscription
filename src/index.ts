@@ -32,6 +32,7 @@ import {
 import { getStartupCursorAccessToken, isTokenNearExpiry } from "./extension/auth.js";
 import { createProviderManager, loadStartupCatalog } from "./extension/provider.js";
 import { registerCursorCommands } from "./extension/commands.js";
+import { parseShellEnvExtra } from "./stream/exec-native.js";
 
 // ── Re-exports for public API, tests, and external scripts ──
 
@@ -72,6 +73,20 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   let currentToken = "";
   let currentTokenSource: CredentialSource = CredentialSource.None;
   let lastRegisteredModels: ProcessedModel[] = [];
+  let shellEnvExtra: readonly string[] = [];
+  const shellEnvFlag = "cursor-shell-env-extra";
+
+  pi.registerFlag(shellEnvFlag, {
+    type: "string",
+    default: "",
+    description: "Comma-separated environment names to pass to Cursor-native shells",
+  });
+  pi.on("session_start", () => {
+    shellEnvExtra = parseShellEnvExtra(pi.getFlag(shellEnvFlag));
+  });
+  pi.on("session_shutdown", () => {
+    shellEnvExtra = [];
+  });
 
   setSystemCredentialsPolicy(resolveSystemCredentialPolicy());
   setLastClientVersion(getCursorClientVersion());
@@ -148,6 +163,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 
   const providerManager = createProviderManager(pi, {
     getAccessToken,
+    getShellEnvExtra: () => shellEnvExtra,
     setCurrentToken: (token, source) => {
       currentToken = token;
       currentTokenSource = source;

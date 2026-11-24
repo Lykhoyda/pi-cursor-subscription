@@ -100,6 +100,7 @@ export function processServerMessage(
   onLocalWork?: (work: Promise<void>) => void,
   convKey?: string,
   nativeExecAbort?: NativeExecAbort,
+  shellEnvExtra?: readonly string[],
 ): StreamProgress {
   const msgCase = msg.message.case;
   debugLog("server_message", { msgCase, msg });
@@ -182,6 +183,7 @@ export function processServerMessage(
       onMcpExec,
       onLocalWork,
       nativeExecAbort,
+      shellEnvExtra,
     );
     // execServerMessage was previously invisible in the lifecycle log — the exact
     // blind spot behind unexplained mid-run stalls. Record the exec case and whether
@@ -369,6 +371,7 @@ function handleExecMessage(
   onMcpExec: (exec: PendingExec) => void,
   onLocalWork?: (work: Promise<void>) => void,
   nativeExecAbort?: NativeExecAbort,
+  shellEnvExtra?: readonly string[],
 ): boolean {
   return handleExecMessageInner(
     execMsg,
@@ -377,6 +380,7 @@ function handleExecMessage(
     onMcpExec,
     onLocalWork,
     nativeExecAbort,
+    shellEnvExtra,
   );
 }
 
@@ -467,6 +471,7 @@ function handleExecMessageInner(
   onMcpExec: (exec: PendingExec) => void,
   onLocalWork?: (work: Promise<void>) => void,
   nativeExecAbort?: NativeExecAbort,
+  shellEnvExtra?: readonly string[],
 ): boolean {
   const execCase = (execMsg as any).message.case;
   const REJECT_REASON = nativeToolRejectReason(execCase ?? "", mcpTools);
@@ -537,7 +542,12 @@ function handleExecMessageInner(
     sendPrivilegedNativeExecRejection(execMsg, execCase ?? "", nativeArgs, mcpTools, sendFrame);
     return true;
   }
-  const native = dispatchNativeExec(execCase ?? "", nativeArgs, nativeExecAbort?.signal());
+  const native = dispatchNativeExec(
+    execCase ?? "",
+    nativeArgs,
+    nativeExecAbort?.signal(),
+    shellEnvExtra,
+  );
   if (native?.kind === "sync") {
     sendNativeFrame(execMsg, native.frame, sendFrame);
     return true;

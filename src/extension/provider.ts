@@ -39,6 +39,7 @@ export const BACKGROUND_CATALOG_REFRESH_TIMEOUT_MS = 20_000;
 
 export interface ProviderRegistrationContext {
   getAccessToken: (options?: { forceRefresh?: boolean }) => Promise<string>;
+  getShellEnvExtra?: () => readonly string[];
   setCurrentToken: (token: string, source: CredentialSource) => void;
   onRegisteredModelsUpdated: (models: ProcessedModel[]) => void;
 }
@@ -173,6 +174,7 @@ export function createProviderManager(
 
     const streamSimple = createCursorNativeStream({
       getAccessToken: context.getAccessToken,
+      getShellEnvExtra: context.getShellEnvExtra,
       getNoReasoningEffortByModelId: () => noReasoningEffortByModelId,
       getRawModelRoutingByModelId: () => rawModelByEffortByModelId,
     });

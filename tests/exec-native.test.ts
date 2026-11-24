@@ -10,6 +10,7 @@ import {
   dispatchNativeExec,
   emptyGrepPatternRejection,
   fetchPublic,
+  parseShellEnvExtra,
   type PinnedRequest,
   type PinnedResponse,
   requestPinned,
@@ -19,6 +20,135 @@ import {
 } from "../src/stream/exec-native.js";
 import { rotateConversationAfterRateLimit } from "../src/stream/session-state.js";
 import type { StoredConversation } from "../src/stream/types.js";
+import { createNativeShellFixture } from "./fixtures/native-shell-fixture.js";
+
+describe("native shell environment", () => {
+  const parent: NodeJS.ProcessEnv = {
+    PATH: "",
+    Path: "/mixed",
+    HOME: "/home/demo",
+    LANG: "C",
+    TMPDIR: "/tmp/demo",
+    LC_ALL: "C",
+    LC_PAPER: "C",
+    LC_custom: "C",
+    LC_: "bare",
+    LC_0: "bad",
+    LC_TIME_Z: "C",
+    NOT_LC_TIME: "prefixed",
+    "LC_TIME-EXTRA": "punctuation",
+    "LC_TIME\n": "newline",
+    LC_API_KEY: "vetoed",
+    systemroot: "lower",
+    SystemRoot: "exact",
+    cOmspec: "mixed",
+    comspec: "lower",
+    PATHEXT: ".EXE",
+    USERPROFILE: "/home/demo",
+    TEMP: "/tmp/demo",
+    TMP: "/tmp/demo",
+    DEMO_COLOR: "blue",
+    DEMO_EMPTY: "",
+    DEMO_UNDEFINED: undefined,
+    DEMO_UNUSED: "amber",
+    PI_CURSOR_SHELL_ENV_EXTRA: "DEMO_UNUSED",
+    AWS_ACCESS_KEY_ID: "vetoed",
+    DATABASE_URL: "vetoed",
+    demo_connection_string: "vetoed",
+    CUSTOM_TOKEN: "vetoed",
+    ["__proto__"]: "literal",
+  };
+  const flag =
+    " \tDEMO_COLOR ,DEMO_EMPTY,DEMO_COLOR,DEMO_UNDEFINED,DEMO_UNKNOWN, __proto__," +
+    " PI_CURSOR_SHELL_ENV_EXTRA,DEMO_*,DEMO_UNUSED=amber,1BAD,DEMO UNUSED,DEMO_UNUSED\n," +
+    " CUSTOM_TOKEN,LC_API_KEY,AWS_ACCESS_KEY_ID,DATABASE_URL,demo_connection_string";
+  const defaults = {
+    PATH: "",
+    HOME: "/home/demo",
+    LANG: "C",
+    TMPDIR: "/tmp/demo",
+    LC_ALL: "C",
+    LC_PAPER: "C",
+    LC_TIME_Z: "C",
+  };
+  const windows = {
+    ...defaults,
+    LC_custom: "C",
+    SystemRoot: "exact",
+    cOmspec: "mixed",
+    PATHEXT: ".EXE",
+    USERPROFILE: "/home/demo",
+    TEMP: "/tmp/demo",
+    TMP: "/tmp/demo",
+  };
+  const optedIn = { DEMO_COLOR: "blue", DEMO_EMPTY: "", ["__proto__"]: "literal" };
+
+  it.each([
+    ["linux", undefined, defaults],
+    ["darwin", flag, { ...defaults, ...optedIn }],
+    ["linux", `${flag},Path`, { ...defaults, ...optedIn, Path: "/mixed" }],
+    ["win32", "", windows],
+    ["win32", flag.toLowerCase(), { ...windows, ...optedIn }],
+  ] as const)(
+    "selects the exact %s environment for the supplied grant",
+    (platform, input, expected) => {
+      const env = { ...parent };
+      Object.setPrototypeOf(env, { DEMO_INHERITED: "inherited" });
+      Object.defineProperty(env, "UNRELATED", {
+        enumerable: true,
+        get: () => {
+          throw new Error("Excluded value was read");
+        },
+      });
+      const before = Object.getOwnPropertyDescriptors(env);
+      const extra = [...parseShellEnvExtra(input, platform), "DEMO_INHERITED"];
+      const result = shellEnv(env, extra, platform);
+      expect(Object.keys(result).sort()).toEqual(Object.keys(expected).sort());
+      expect({ ...result }).toEqual(expected);
+      expect(Object.getPrototypeOf(result)).toBeNull();
+      expect(Object.getOwnPropertyDescriptors(env)).toEqual(before);
+    },
+  );
+
+  it.each([undefined, true, "", "  \t", ",*,ab.*,x=y,with\tspace,DEMO_UNUSED\r\n"] as const)(
+    "treats a missing or invalid flag as zero extras",
+    (value) => expect(parseShellEnvExtra(value, "linux")).toEqual([]),
+  );
+
+  it("deduplicates literal names using the platform's comparison", () => {
+    const names = "Demo_Color,DEMO_COLOR, Demo_Color \t";
+    expect(parseShellEnvExtra(names, "linux")).toEqual(["Demo_Color", "DEMO_COLOR"]);
+    expect(parseShellEnvExtra(names, "win32")).toEqual(["Demo_Color"]);
+    expect({ ...shellEnv({ Path: "/mixed" }, [], "win32") }).toEqual({ Path: "/mixed" });
+    expect({
+      ...shellEnv({ demo_color: "lower", dEmo_color: "ordinal" }, ["DEMO_COLOR"], "win32"),
+    }).toEqual({ dEmo_color: "ordinal" });
+    expect({
+      ...shellEnv({ dEmo_color: "ordinal", demo_color: "lower" }, ["DEMO_COLOR"], "win32"),
+    }).toEqual({ dEmo_color: "ordinal" });
+  });
+
+  it("checks the effective environment in both real native shell modes", () => {
+    const { root, cwd, env } = createNativeShellFixture();
+    try {
+      const result = spawnSync(
+        process.execPath,
+        ["--no-env-file", path.join(import.meta.dir, "fixtures", "native-shell-dispatch.ts")],
+        {
+          cwd,
+          env: { ...env, PI_CURSOR_SHELL_ENV_EXTRA: "DEMO_COLOR,DEMO_UNUSED" },
+          encoding: "utf8",
+          timeout: 10_000,
+        },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe("NATIVE_SHELL_DISPATCH_PASS");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("native exec workspace paths", () => {
   it("rejects paths that escape the workspace", () => {
@@ -162,38 +292,6 @@ describe("native exec handlers", () => {
     expect(result.value.output?.value).toContain("pi+firstmate+cursor ok");
   });
 
-  it("does not pass secret-looking env vars to the shell", async () => {
-    expect(Object.keys(shellEnv({ CURSOR_ACCESS_TOKEN: "x", PATH: "/bin", HOME: "/h" }))).toEqual([
-      "PATH",
-      "HOME",
-    ]);
-    dir = mkdtempSync(path.join(tmpdir(), "pi-cursor-exec-"));
-    const prevToken = process.env.CURSOR_ACCESS_TOKEN;
-    process.env.CURSOR_ACCESS_TOKEN = "leak-me-not";
-    try {
-      const result = await runShellCommand('echo "[${CURSOR_ACCESS_TOKEN:-unset}]"', dir, 5_000);
-      expect(result.stdout).toContain("[unset]");
-      expect(result.stdout).not.toContain("leak-me-not");
-    } finally {
-      if (prevToken === undefined) delete process.env.CURSOR_ACCESS_TOKEN;
-      else process.env.CURSOR_ACCESS_TOKEN = prevToken;
-    }
-  });
-
-  it("drops access keys, database URLs, and connection strings from the shell env", () => {
-    expect(
-      Object.keys(
-        shellEnv({
-          AWS_ACCESS_KEY_ID: "x",
-          DATABASE_URL: "y",
-          CONNECTION_STRING: "z",
-          app_connection_string: "z",
-          PATH: "/bin",
-        }),
-      ),
-    ).toEqual(["PATH"]);
-  });
-
   it.skipIf(process.platform !== "linux")(
     "scrubs secrets from the parent's /proc environ before the shell runs",
     () => {
@@ -203,8 +301,8 @@ describe("native exec handlers", () => {
         const r = await runShellCommand("tr '\\\\0' '\\\\n' < /proc/$PPID/environ | grep -c leak-me-not; true", process.cwd(), 5000);
         console.log(JSON.stringify({ seenByShell: r.stdout.trim(), ownEnv: process.env.CURSOR_ACCESS_TOKEN }));
       `;
-      const out = spawnSync(process.execPath, ["-e", script], {
-        env: { ...process.env, CURSOR_ACCESS_TOKEN: "leak-me-not" },
+      const out = spawnSync(process.execPath, ["--no-env-file", "-e", script], {
+        env: { PATH: "/usr/bin:/bin", CURSOR_ACCESS_TOKEN: "leak-me-not" },
         encoding: "utf8",
       });
       expect(JSON.parse(out.stdout.trim())).toEqual({ seenByShell: "0", ownEnv: "leak-me-not" });

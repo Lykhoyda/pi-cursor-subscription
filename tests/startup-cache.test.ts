@@ -154,6 +154,7 @@ describe("model catalog cache", () => {
     let providerConfig: ProviderConfig | undefined;
     const pi = {
       on() {},
+      registerFlag() {},
       registerCommand() {},
       registerProvider(_name: string, config: ProviderConfig) {
         providerConfig = config;

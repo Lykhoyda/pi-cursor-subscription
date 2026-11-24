@@ -240,6 +240,7 @@ export interface CursorNativeStreamConfig {
    * reference on to the idle-retry path, so it must not depend on `this`.
    */
   getAccessToken: (options?: { forceRefresh?: boolean }) => Promise<string>;
+  getShellEnvExtra?(): readonly string[];
   getNoReasoningEffortByModelId?(): Map<string, string>;
   getRawModelRoutingByModelId?(): Map<string, Record<string, CursorNativeModelRouting>>;
 }
@@ -296,6 +297,7 @@ export interface NativeStreamAttemptInput {
   maxIdleRetries?: number;
   streamIdleTimeoutMs?: number;
   getAccessToken?: (options?: { forceRefresh?: boolean }) => Promise<string>;
+  shellEnvExtra?: readonly string[];
   /** When true, idle timeout tries recovery/rebuild before a blind restart. */
   recoverBeforeRetry?: boolean;
   /** Required for checkpoint-based continuation after transport loss. */

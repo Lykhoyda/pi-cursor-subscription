@@ -32,6 +32,7 @@ async function loadCursor() {
   // the installed Pi runtime and its actual provider composer, without mocks.
   await cursorExtension({
     on() {},
+    registerFlag() {},
     registerCommand() {},
     registerProvider: (name: string, config: ProviderConfig) =>
       runtime.registerProvider(name, config),
