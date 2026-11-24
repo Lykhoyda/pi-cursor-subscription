@@ -6,7 +6,7 @@ Guidance and repository standards for LLM coding agents working on `@lykhoyda/pi
 
 ## 1. Project Overview
 
-`@lykhoyda/pi-cursor-subscription` is a Cursor provider extension for the **Pi Coding Agent**, forked from `@rahularya01/pi-cursor`. It enables direct streaming communication with Cursor models (Claude, GPT-5.5, Composer, Grok, Gemini, Kimi) over HTTP/2 using Connect RPC and Protobuf binary framing. Privileged native exec (shell/fetch/write/delete) is on unless `PI_CURSOR_NATIVE_EXEC=0`.
+`@lykhoyda/pi-cursor-subscription` is a Cursor provider extension for the **Pi Coding Agent**, forked from `@rahularya01/pi-cursor`. It enables direct streaming communication with Cursor models (Claude, GPT, Composer, Gemini, Grok, Kimi, and other models available to your account) over HTTP/2 using Connect RPC and Protobuf binary framing. Privileged native exec (shell/fetch/write/delete) is on unless `PI_CURSOR_NATIVE_EXEC=0`.
 
 ### Core Stack
 
@@ -70,6 +70,9 @@ src/
 │   └── bridge.ts           # BridgeHandle protocol framing + transport-agnostic entry point
 ├── stream/                 # Stream Simple adapter & session handling
 │   ├── native-core.ts      # Core stream Simple interface for Pi AI
+│   ├── server-messages.ts  # Dispatches stream messages, including blob requests, tool calls, and permission queries
+│   ├── exec-native.ts      # Handles Cursor-native filesystem, shell, and fetch requests
+│   ├── transport-errors.ts # Classifies bridge and Connect RPC failures for stream recovery
 │   ├── root-prompt.ts      # Model-facing prompt messages (system prompt + replayed history)
 │   ├── context-normalize.ts# Folds side-channel injections into system prompt
 │   ├── thinking-filter.ts  # Reasoning effort mapping (off, minimal, low, medium, high, xhigh, max)
