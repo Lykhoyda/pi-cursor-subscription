@@ -204,6 +204,7 @@ export function dispatchNativeExec(
   execCase: string,
   args: Record<string, unknown>,
   signal?: AbortSignal,
+  shellEnvExtra?: readonly string[],
 ): NativeExecDispatch | undefined {
   switch (execCase) {
     case "readArgs":
@@ -232,9 +233,9 @@ export function dispatchNativeExec(
         },
       };
     case "shellArgs":
-      return { kind: "async", run: () => execShell(args, signal) };
+      return { kind: "async", run: () => execShell(args, signal, shellEnvExtra) };
     case "shellStreamArgs":
-      return { kind: "stream", run: (emit) => execShellStream(args, emit, signal) };
+      return { kind: "stream", run: (emit) => execShellStream(args, emit, signal, shellEnvExtra) };
     case "fetchArgs":
       return { kind: "async", run: () => execFetch(args) };
     default:
@@ -672,6 +673,7 @@ function execDiagnostics(args: Record<string, unknown>): NativeExecFrame {
 async function execShell(
   args: Record<string, unknown>,
   signal?: AbortSignal,
+  shellEnvExtra?: readonly string[],
 ): Promise<NativeExecFrame> {
   const command = typeof args.command === "string" ? args.command : "";
   const workingDirectory =
@@ -715,7 +717,13 @@ async function execShell(
     };
   }
   const started = Date.now();
-  const result = await runShellCommand(command, cwdResolved.path, SHELL_TIMEOUT_MS, signal);
+  const result = await runShellCommand(
+    command,
+    cwdResolved.path,
+    SHELL_TIMEOUT_MS,
+    signal,
+    shellEnvExtra,
+  );
   const executionTime = Date.now() - started;
   if (result.exitCode === 0) {
     return {
@@ -760,6 +768,7 @@ async function execShellStream(
   args: Record<string, unknown>,
   emit: (frame: NativeExecFrame) => void,
   signal?: AbortSignal,
+  shellEnvExtra?: readonly string[],
 ): Promise<void> {
   const command = typeof args.command === "string" ? args.command : "";
   const workingDirectory =
@@ -796,7 +805,13 @@ async function execShellStream(
     isBackground: args.isBackground === true,
     timeoutBehavior: typeof args.timeoutBehavior === "number" ? args.timeoutBehavior : undefined,
   });
-  const result = await runShellCommand(command, cwdResolved.path, SHELL_TIMEOUT_MS, signal);
+  const result = await runShellCommand(
+    command,
+    cwdResolved.path,
+    SHELL_TIMEOUT_MS,
+    signal,
+    shellEnvExtra,
+  );
   // Cursor's shell client treats timeoutBehavior BACKGROUND (2) with an unset
   // block timeout as "resume the model on a backgrounded event", and ignores
   // exit. A finished command still puts its output on the stream first.
@@ -1044,8 +1059,65 @@ function truncateUtf8(text: string, maxBytes: number): string {
 const SECRET_ENV_KEY =
   /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY|CREDENTIAL|ACCESS_KEY|DATABASE_URL|CONNECTION_STRING/i;
 
-export function shellEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(env).filter(([key]) => !SECRET_ENV_KEY.test(key)));
+const SHELL_ENV_DEFAULTS = ["PATH", "HOME", "LANG", "TMPDIR"];
+const SHELL_ENV_WINDOWS = ["SystemRoot", "ComSpec", "PATHEXT", "USERPROFILE", "TEMP", "TMP"];
+const SHELL_ENV_CONTROL = "PI_CURSOR_SHELL_ENV_EXTRA";
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const LOCALE_ENV_NAME = /^LC_[A-Z][A-Z0-9_]*$/;
+
+export function parseShellEnvExtra(flag: unknown, platform = process.platform): string[] {
+  if (typeof flag !== "string") return [];
+  const names = new Map<string, string>();
+  for (const entry of flag.split(",")) {
+    const name = entry.replace(/^[ \t]+|[ \t]+$/g, "");
+    if (!ENV_NAME.test(name)) continue;
+    const key = platform === "win32" ? name.toUpperCase() : name;
+    if (!names.has(key)) names.set(key, name);
+  }
+  return [...names.values()];
+}
+
+export function shellEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  extra: readonly string[] = [],
+  platform = process.platform,
+): NodeJS.ProcessEnv {
+  const win = platform === "win32";
+  const allowed = new Map(SHELL_ENV_DEFAULTS.map((name) => [name, name]));
+  if (win) {
+    for (const name of SHELL_ENV_WINDOWS) allowed.set(name.toUpperCase(), name);
+  }
+  for (const name of extra) {
+    if (!ENV_NAME.test(name)) continue;
+    const key = win ? name.toUpperCase() : name;
+    if (!allowed.has(key)) allowed.set(key, name);
+  }
+
+  const selected = new Map<string, string>();
+  const result: NodeJS.ProcessEnv = Object.create(null);
+  for (const name of Object.keys(env)) {
+    if (win && !ENV_NAME.test(name)) continue;
+    const key = win ? name.toUpperCase() : name;
+    if (key === SHELL_ENV_CONTROL || SECRET_ENV_KEY.test(name)) continue;
+    const preferred = LOCALE_ENV_NAME.test(key) ? key : allowed.get(key);
+    if (preferred === undefined) continue;
+    const value = env[name];
+    if (typeof value !== "string") continue;
+
+    // Windows treats casings as one key. Prefer the documented spelling, then
+    // ordinal order so duplicate spellings in an input map have a stable winner.
+    const previous = selected.get(key);
+    if (
+      previous !== undefined &&
+      (previous === preferred || (name !== preferred && previous < name))
+    ) {
+      continue;
+    }
+    if (previous !== undefined) delete result[previous];
+    selected.set(key, name);
+    result[name] = value;
+  }
+  return result;
 }
 
 function isSecretEnvEntry(entry: string): boolean {
@@ -1124,6 +1196,7 @@ export async function runShellCommand(
   cwd: string,
   timeoutMs: number,
   signal?: AbortSignal,
+  shellEnvExtra?: readonly string[],
 ): Promise<{
   stdout: string;
   stderr: string;
@@ -1156,7 +1229,7 @@ export async function runShellCommand(
       isWin ? ["/d", "/s", "/c", command] : ["-c", command],
       {
         cwd,
-        env: shellEnv(),
+        env: shellEnv(process.env, shellEnvExtra),
         windowsHide: true,
         detached: !isWin,
       },

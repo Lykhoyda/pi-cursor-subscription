@@ -91,13 +91,27 @@ export PI_CURSOR_SYSTEM_CREDENTIALS=0
 
 By default, Cursor-native **shell**, **fetch**, **write**, and **delete** run on the open Run RPC, outside Pi's sandbox and confirmation UI, so a session with no Pi tools can still act. **read**, **ls**, and **grep** always run on that channel.
 
-Native **shell** is not sandboxed: only the starting directory is checked; the command can `cd` anywhere your user can. Secret-named env vars are stripped from the child and zeroed in Pi's own inspectable environment. See [SECURITY.md](SECURITY.md#privileged-native-exec). Run Pi in a container or VM if that risk is unacceptable, or turn native exec off:
+The native **shell** runs with your user's filesystem permissions. The extension checks the starting directory. Use a container or VM for isolation, or turn native exec off with this setting.
 
 ```bash
 export PI_CURSOR_NATIVE_EXEC=0
 ```
 
 With that set, privileged execs go through Pi tools (`bash`, `edit`, `write`) instead.
+
+The native shell receives these parent variables when present.
+
+- Linux, macOS, WSL, and Windows: `PATH`, `HOME`, `LANG`, `TMPDIR`, and locale names matching `^LC_[A-Z][A-Z0-9_]*$`.
+- Native Windows also receives `SystemRoot`, `ComSpec`, `PATHEXT`, `USERPROFILE`, `TEMP`, and `TMP` from the extension. Windows names are matched case-insensitively. Bun's Windows process launcher can also supply parent values for missing `HOMEDRIVE`, `HOMEPATH`, `LOGONSERVER`, `PATH`, `SYSTEMDRIVE`, `SYSTEMROOT`, `TEMP`, `USERDOMAIN`, `USERNAME`, `USERPROFILE`, and `WINDIR`.
+
+If a tool needs an extra setting such as `DEMO_COLOR`, list its name in your own shell or a trusted launcher outside the workspace.
+
+```sh
+PI_CURSOR_SHELL_ENV_EXTRA='DEMO_COLOR'
+pi --cursor-shell-env-extra "$PI_CURSOR_SHELL_ENV_EXTRA"
+```
+
+In PowerShell, use `$PI_CURSOR_SHELL_ENV_EXTRA = 'DEMO_COLOR'` followed by the same Pi invocation. The launcher expands the comma-separated names into one quoted argument before Pi starts. The extension grants extras only through Pi's parsed flag. Exporting the variable or setting it in a workspace `.env` file grants zero extras on its own. Values for granted names come from Pi's process environment, which can include dotenv values. The child map always excludes the control variable itself and names that match the secret filter. See [SECURITY.md](SECURITY.md#privileged-native-exec).
 
 Native **fetch** refuses loopback, private-network, link-local / cloud-metadata, and other internal addresses, including via redirects.
 
@@ -112,6 +126,7 @@ Cursor can see Pi's MCP tools. Cursor subagents are not supported and return an 
 | `CURSOR_ACCESS_TOKEN`                          | unset                | Access token override                                    |
 | `PI_CURSOR_SYSTEM_CREDENTIALS`                 | on                   | Set `0` to disable Keychain / IDE harvest                |
 | `PI_CURSOR_NATIVE_EXEC`                        | on                   | Set `0` to reject privileged native exec                 |
+| `PI_CURSOR_SHELL_ENV_EXTRA`                    | unset                | Local name list to pass as `--cursor-shell-env-extra`    |
 | `PI_CURSOR_HOSTED_WEB`                         | off                  | Set `1` to auto-approve hosted web / Exa                 |
 | `PI_CURSOR_CLIENT_VERSION`                     | bundled default      | Pin the `x-cursor-client-version` header                 |
 | `PI_CURSOR_AGENT_URL` / `CURSOR_AGENT_URL`     | Cursor's agent host  | Must be `*.cursor.sh` / `*.cursor.com` or localhost      |
