@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.4
+
+### Patch Changes
+
+- [#79](https://github.com/Lykhoyda/pi-cursor-subscription/pull/79) [`efbd062`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/efbd062e8c768ebcf5578a7cdf7e3f1c47b5366d) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Close the final Cursor bridge when a turn is refused after retries, so Pi can exit naturally. Preserve the latest checkpoint and published tool calls for recovery. Pi smokes now report a confirmed usage refusal after clean shutdown and fail when Pi or a bridge stays open.
+
+- [#82](https://github.com/Lykhoyda/pi-cursor-subscription/pull/82) [`7375bb4`](https://github.com/Lykhoyda/pi-cursor-subscription/commit/7375bb483b63811b838f78ea10a6a1eb4a2ca42b) Thanks [@Lykhoyda](https://github.com/Lykhoyda)! - Limit the parent environment passed to Cursor-native shells to an allowlist. Tools that need an extra variable can pass its name through Pi's `--cursor-shell-env-extra` flag using the local `PI_CURSOR_SHELL_ENV_EXTRA` launcher variable documented in the README.
+
 ## 1.6.3
 
 ### Patch Changes
